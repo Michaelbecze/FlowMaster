@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FlowMaster — NetFlow Analytics</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
+  <style>
+    :root {
+      --bg:        #060d1f;
+      --card-bg:   rgba(8, 18, 44, 0.85);
+      --border:    rgba(0, 212, 255, 0.18);
+      --cyan:      #00d4ff;
+      --purple:    #8b5cf6;
+      --green:     #10b981;
+      --orange:    #f59e0b;
+      --red:       #ef4444;
+      --pink:      #ec4899;
+      --text:      #e2e8f0;
+      --text-dim:  #64748b;
+      --glow:      0 0 20px rgba(0, 212, 255, 0.15);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      background-image:
+        radial-gradient(ellipse at 20% 10%, rgba(0, 212, 255, 0.05) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 80%, rgba(139, 92, 246, 0.05) 0%, transparent 50%);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      font-size: 14px;
+    }
+
+    /* ── Header ─────────────────────────────── */
+    header {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 28px;
+      background: rgba(6, 13, 31, 0.9);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(16px);
+    }
+
+    .logo {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 20px; font-weight: 700; letter-spacing: 2px;
+      color: var(--cyan); text-shadow: 0 0 20px rgba(0,212,255,0.5);
+    }
+
+    .logo svg { width: 28px; height: 28px; }
+
+    .header-right {
+      display: flex; align-items: center; gap: 20px;
+    }
+
+    #last-update { color: var(--text-dim); font-size: 12px; }
+
+    .live-badge {
+      display: flex; align-items: center; gap: 7px;
+      padding: 4px 12px;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      border-radius: 20px;
+      background: rgba(16, 185, 129, 0.08);
+      color: var(--green); font-size: 11px; font-weight: 600; letter-spacing: 1px;
+    }
+
+    /* ── Time range selector ─────────────────── */
+    .time-selector {
+      display: flex; gap: 4px;
+    }
+
+    .time-btn {
+      padding: 4px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text-dim);
+      font-size: 12px; font-weight: 600; letter-spacing: 0.5px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .time-btn:hover {
+      border-color: rgba(0,212,255,0.4);
+      color: var(--text);
+    }
+
+    .time-btn.active {
+      border-color: var(--cyan);
+      background: rgba(0,212,255,0.12);
+      color: var(--cyan);
+    }
+
+    .pulse-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    /* ── Layout ─────────────────────────────── */
+    main {
+      padding: 24px 28px;
+      display: flex; flex-direction: column; gap: 20px;
+      max-width: 1600px; margin: 0 auto;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 24px;
+      box-shadow: var(--glow);
+      backdrop-filter: blur(8px);
+    }
+
+    .card-title {
+      font-size: 13px; font-weight: 600; letter-spacing: 1px;
+      color: var(--text-dim); text-transform: uppercase; margin-bottom: 16px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+
+    .card-title span { color: var(--text-dim); font-size: 11px; font-weight: 400; letter-spacing: 0; }
+
+    /* ── Stats row ───────────────────────────── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 22px;
+      box-shadow: var(--glow);
+      position: relative; overflow: hidden;
+    }
+
+    .stat-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    }
+    .stat-card.cyan::before  { background: linear-gradient(90deg, transparent, var(--cyan), transparent); }
+    .stat-card.purple::before { background: linear-gradient(90deg, transparent, var(--purple), transparent); }
+    .stat-card.green::before  { background: linear-gradient(90deg, transparent, var(--green), transparent); }
+    .stat-card.orange::before { background: linear-gradient(90deg, transparent, var(--orange), transparent); }
+
+    .stat-label { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px; }
+    .stat-value { font-size: 32px; font-weight: 700; line-height: 1; margin-bottom: 6px; }
+    .stat-value.cyan   { color: var(--cyan);   text-shadow: 0 0 20px rgba(0,212,255,0.4); }
+    .stat-value.purple { color: var(--purple);  text-shadow: 0 0 20px rgba(139,92,246,0.4); }
+    .stat-value.green  { color: var(--green);   text-shadow: 0 0 20px rgba(16,185,129,0.4); }
+    .stat-value.orange { color: var(--orange);  text-shadow: 0 0 20px rgba(245,158,11,0.4); }
+    .stat-sub  { font-size: 12px; color: var(--text-dim); }
+
+    /* ── Two-col ─────────────────────────────── */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .three-col {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 20px;
+    }
+
+    /* ── Chart containers ────────────────────── */
+    .chart-wrap {
+      position: relative;
+    }
+
+    /* ── Protocol legend ─────────────────────── */
+    #proto-legend {
+      display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px;
+    }
+
+    .legend-item {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 12px; color: var(--text-dim);
+    }
+
+    .legend-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+    }
+
+    /* ── Sankey ─────────────────────────────── */
+    #sankey-svg { width: 100%; display: block; }
+
+    .sankey-empty {
+      display: flex; align-items: center; justify-content: center;
+      height: 200px; color: var(--text-dim); font-size: 13px;
+    }
+
+    /* ── Flow table ──────────────────────────── */
+    .table-wrap {
+      overflow-x: auto; max-height: 320px; overflow-y: auto;
+    }
+
+    table {
+      width: 100%; border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    thead th {
+      position: sticky; top: 0;
+      padding: 8px 12px; text-align: left;
+      background: rgba(0,0,0,0.5);
+      color: var(--text-dim); font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+    }
+
+    tbody tr {
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      transition: background 0.15s;
+    }
+
+    tbody tr:hover { background: rgba(0, 212, 255, 0.04); }
+
+    tbody td {
+      padding: 7px 12px; color: var(--text);
+    }
+
+    .proto-badge {
+      display: inline-block;
+      padding: 2px 8px; border-radius: 4px;
+      font-size: 11px; font-weight: 600;
+    }
+
+    .proto-TCP  { background: rgba(0,212,255,0.15);  color: var(--cyan); }
+    .proto-UDP  { background: rgba(139,92,246,0.15); color: var(--purple); }
+    .proto-ICMP { background: rgba(16,185,129,0.15); color: var(--green); }
+    .proto-other { background: rgba(100,116,139,0.2); color: var(--text-dim); }
+
+    /* ── Scrollbar ───────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(0,212,255,0.2); border-radius: 3px; }
+
+    /* ── No-data placeholder ─────────────────── */
+    .no-data {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 160px; color: var(--text-dim); font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 28 28" fill="none">
+      <path d="M2 18 Q7 8 14 14 Q21 20 26 10" stroke="#00d4ff" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      <path d="M2 22 Q7 12 14 18 Q21 24 26 14" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.7"/>
+    </svg>
+    FLOWMASTER
+  </div>
+  <div class="header-right">
+    <div class="time-selector" id="time-selector">
+      <button class="time-btn active" data-hours="1">1H</button>
+      <button class="time-btn" data-hours="3">3H</button>
+      <button class="time-btn" data-hours="6">6H</button>
+      <button class="time-btn" data-hours="12">12H</button>
+      <button class="time-btn" data-hours="24">24H</button>
+    </div>
+    <span id="last-update">Connecting…</span>
+    <div class="live-badge">
+      <span class="pulse-dot"></span>
+      LIVE
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- Stats -->
+  <div class="stats-row">
+    <div class="stat-card cyan">
+      <div class="stat-label">Total Flows</div>
+      <div class="stat-value cyan" id="s-flows">—</div>
+      <div class="stat-sub">last hour</div>
+    </div>
+    <div class="stat-card purple">
+      <div class="stat-label">Total Bytes</div>
+      <div class="stat-value purple" id="s-bytes">—</div>
+      <div class="stat-sub">last hour</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-label">Unique Sources</div>
+      <div class="stat-value green" id="s-src">—</div>
+      <div class="stat-sub">distinct IPs</div>
+    </div>
+    <div class="stat-card orange">
+      <div class="stat-label">Unique Destinations</div>
+      <div class="stat-value orange" id="s-dst">—</div>
+      <div class="stat-sub">distinct IPs</div>
+    </div>
+  </div>
+
+  <!-- Traffic over time (clickable) -->
+  <div class="card">
+    <div class="card-title">
+      Traffic Volume
+      <span id="traffic-hint" style="color:var(--text-dim);font-size:11px;">Click a point to inspect flows</span>
+    </div>
+    <div class="chart-wrap" style="cursor:pointer;">
+      <canvas id="trafficChart" height="80"></canvas>
+    </div>
+  </div>
+
+  <!-- Flow drill-down panel (hidden until a point is clicked) -->
+  <div class="card" id="drilldown-panel" style="display:none;">
+    <div class="card-title">
+      <span id="drilldown-title">Flows</span>
+      <button id="drilldown-close" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:18px;line-height:1;">×</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Source IP</th>
+            <th>Src Port</th>
+            <th>Destination IP</th>
+            <th>Dst Port</th>
+            <th>Protocol</th>
+            <th>Bytes</th>
+            <th>Packets</th>
+            <th>Duration</th>
+          </tr>
+        </thead>
+        <tbody id="drilldown-tbody">
+          <tr><td colspan="9" class="no-data">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Protocol + Application + Top Talkers -->
+  <div class="two-col">
+    <div class="card" style="display:flex;flex-direction:column;gap:20px;">
+      <!-- Protocol -->
+      <div style="display:grid;grid-template-columns:160px 1fr;gap:20px;align-items:center;">
+        <div style="width:160px;height:160px;flex-shrink:0;">
+          <canvas id="protoChart"></canvas>
+        </div>
+        <div>
+          <div class="card-title" style="margin-bottom:10px;">Protocol Distribution</div>
+          <div id="proto-legend" style="display:flex;flex-direction:column;gap:7px;"></div>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--border);"></div>
+      <!-- Application -->
+      <div style="display:grid;grid-template-columns:160px 1fr;gap:20px;align-items:center;">
+        <div style="width:160px;height:160px;flex-shrink:0;">
+          <canvas id="appChart"></canvas>
+        </div>
+        <div>
+          <div class="card-title" style="margin-bottom:10px;">Applications</div>
+          <div id="app-legend" style="display:flex;flex-direction:column;gap:7px;"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Top Talkers <span>by bytes</span></div>
+      <canvas id="talkersChart" height="180"></canvas>
+    </div>
+  </div>
+
+  <!-- Sankey -->
+  <div class="card">
+    <div class="card-title">Flow Map <span>top src → dst pairs</span></div>
+    <div id="sankey-wrap">
+      <div class="sankey-empty" id="sankey-empty">Waiting for flow data…</div>
+      <svg id="sankey-svg" style="display:none;"></svg>
+    </div>
+  </div>
+</main>
+
+<script>
+'use strict';
+
+// ── Global time range ──────────────────────────────────────────────────
+let currentHours = 1;
+
+document.getElementById('time-selector').addEventListener('click', e => {
+  const btn = e.target.closest('.time-btn');
+  if (!btn) return;
+  document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentHours = parseFloat(btn.dataset.hours);
+  closeDrilldown();
+  refreshAll();
+});
+
+// ── Helpers ────────────────────────────────────────────────────────────
+const COLORS = ['#00d4ff','#8b5cf6','#10b981','#f59e0b','#ef4444','#ec4899','#06b6d4','#a78bfa','#34d399','#fbbf24'];
+const PROTO  = {1:'ICMP',6:'TCP',17:'UDP',47:'GRE',50:'ESP',58:'ICMPv6',89:'OSPF',132:'SCTP'};
+
+function protoName(p) { return PROTO[p] || `Proto-${p}`; }
+
+function fmtBytes(b) {
+  if (b == null) return '—';
+  if (b < 1024)       return b + ' B';
+  if (b < 1048576)    return (b/1024).toFixed(1) + ' KB';
+  if (b < 1073741824) return (b/1048576).toFixed(1) + ' MB';
+  return (b/1073741824).toFixed(2) + ' GB';
+}
+
+function fmtNum(n) { return n == null ? '—' : Number(n).toLocaleString(); }
+
+function fmtTime(ts) {
+  return new Date(ts * 1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+}
+
+function fmtBucket(isoStr) {
+  const d = new Date(isoStr + 'Z');
+  return currentHours <= 2
+    ? d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+    : d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+}
+
+function protoClass(name) {
+  if (name === 'TCP')  return 'proto-TCP';
+  if (name === 'UDP')  return 'proto-UDP';
+  if (name === 'ICMP') return 'proto-ICMP';
+  return 'proto-other';
+}
+
+Chart.defaults.color = '#64748b';
+Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
+
+// ── Chart: Traffic over time (clickable) ───────────────────────────────
+let trafficChart;
+let trafficBuckets  = [];   // raw ISO bucket strings, parallel to chart data
+let trafficInterval = 60;   // seconds per bucket — kept in sync with server
+let selectedIndex   = -1;
+
+function initTrafficChart() {
+  const ctx  = document.getElementById('trafficChart').getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, 200);
+  grad.addColorStop(0, 'rgba(0,212,255,0.35)');
+  grad.addColorStop(1, 'rgba(0,212,255,0)');
+
+  trafficChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        label: 'Bytes',
+        data: [],
+        borderColor: '#00d4ff',
+        borderWidth: 2,
+        backgroundColor: grad,
+        fill: true,
+        tension: 0.4,
+        pointRadius: 4,
+        pointBackgroundColor: [],   // filled per-point to highlight selection
+        pointBorderColor: 'transparent',
+        pointHoverRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true,
+      animation: { duration: 400 },
+      onClick: onTrafficClick,
+      scales: {
+        x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { maxTicksLimit: 12 } },
+        y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { callback: v => fmtBytes(v) } }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => fmtBytes(c.raw) } }
+      }
+    }
+  });
+}
+
+function onTrafficClick(event, elements) {
+  if (!elements.length) return;
+  const idx    = elements[0].index;
+  const bucket = trafficBuckets[idx];
+  if (!bucket) return;
+
+  selectedIndex = idx;
+  highlightPoint(idx);
+
+  // bucket is "YYYY-MM-DDTHH:MM:00" UTC; window is 1 min or 1 hr
+  const from = new Date(bucket + 'Z').getTime() / 1000;
+  const to   = from + trafficInterval;
+  loadDrilldown(bucket, from, to);
+}
+
+function highlightPoint(idx) {
+  const n     = trafficChart.data.datasets[0].data.length;
+  const colors = Array.from({length: n}, (_, i) =>
+    i === idx ? '#f59e0b' : '#00d4ff'
+  );
+  trafficChart.data.datasets[0].pointBackgroundColor = colors;
+  trafficChart.data.datasets[0].pointRadius = Array.from({length: n}, (_, i) =>
+    i === idx ? 7 : 4
+  );
+  trafficChart.update('none');
+}
+
+function clearHighlight() {
+  const n = trafficChart.data.datasets[0].data.length;
+  trafficChart.data.datasets[0].pointBackgroundColor = Array(n).fill('#00d4ff');
+  trafficChart.data.datasets[0].pointRadius = Array(n).fill(4);
+  trafficChart.update('none');
+}
+
+async function refreshTraffic() {
+  const data = await api(`/api/traffic-over-time?hours=${currentHours}`);
+  trafficBuckets  = data.map(r => r.bucket);
+  trafficInterval = (currentHours * 3600) / 60;
+  trafficChart.data.labels = data.map(r => fmtBucket(r.bucket));
+  trafficChart.data.datasets[0].data = data.map(r => r.total_bytes);
+  // Restore highlight if the selected bucket still exists
+  if (selectedIndex >= 0 && selectedIndex < data.length) {
+    highlightPoint(selectedIndex);
+  } else {
+    trafficChart.data.datasets[0].pointBackgroundColor = Array(data.length).fill('#00d4ff');
+    trafficChart.data.datasets[0].pointRadius = Array(data.length).fill(4);
+    trafficChart.update('none');
+  }
+}
+
+// ── Drill-down panel ───────────────────────────────────────────────────
+async function loadDrilldown(bucketLabel, from, to) {
+  const panel = document.getElementById('drilldown-panel');
+  const tbody = document.getElementById('drilldown-tbody');
+  const title = document.getElementById('drilldown-title');
+
+  panel.style.display = 'block';
+  tbody.innerHTML = '<tr><td colspan="9" class="no-data">Loading…</td></tr>';
+  title.textContent   = `Flows at ${fmtBucket(bucketLabel)}`;
+  panel.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+
+  const data = await api(`/api/flows-at?from_ts=${from}&to_ts=${to}&limit=100`);
+  title.textContent = `Flows at ${fmtBucket(bucketLabel)} — ${fmtNum(data.length)} flows`;
+
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="no-data">No flows in this window</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.map(f => {
+    const name = protoName(f.protocol);
+    return `<tr>
+      <td>${fmtTime(f.timestamp)}</td>
+      <td>${f.src_ip}</td>
+      <td>${f.src_port}</td>
+      <td>${f.dst_ip}</td>
+      <td>${f.dst_port}</td>
+      <td><span class="proto-badge ${protoClass(name)}">${name}</span></td>
+      <td>${fmtBytes(f.bytes)}</td>
+      <td>${fmtNum(f.packets)}</td>
+      <td>${f.duration_ms}ms</td>
+    </tr>`;
+  }).join('');
+}
+
+function closeDrilldown() {
+  selectedIndex = -1;
+  clearHighlight();
+  document.getElementById('drilldown-panel').style.display = 'none';
+}
+
+document.getElementById('drilldown-close').addEventListener('click', closeDrilldown);
+
+// ── Chart: Protocol doughnut ───────────────────────────────────────────
+let protoChart;
+function initProtoChart() {
+  const ctx = document.getElementById('protoChart').getContext('2d');
+  protoChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels: [], datasets: [{ data: [], backgroundColor: COLORS, borderColor: 'rgba(0,0,0,0)', borderWidth: 3, hoverOffset: 6 }] },
+    options: {
+      responsive: true,
+      animation: { duration: 400 },
+      cutout: '65%',
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => `${c.label}: ${fmtBytes(c.raw)}` } }
+      }
+    }
+  });
+}
+
+async function refreshProto() {
+  const data = await api(`/api/protocols?hours=${currentHours}`);
+  protoChart.data.labels = data.map(r => r.name);
+  protoChart.data.datasets[0].data = data.map(r => r.total_bytes);
+  protoChart.update('none');
+
+  document.getElementById('proto-legend').innerHTML = data.map((r, i) => `
+    <div class="legend-item">
+      <span class="legend-dot" style="background:${COLORS[i % COLORS.length]}"></span>
+      <span style="color:var(--text)">${r.name}</span>
+      <span style="color:var(--text-dim);margin-left:auto;">${fmtBytes(r.total_bytes)}</span>
+    </div>`).join('');
+}
+
+// ── Chart: Application doughnut ───────────────────────────────────────
+let appChart;
+function initAppChart() {
+  const ctx = document.getElementById('appChart').getContext('2d');
+  appChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels: [], datasets: [{ data: [], backgroundColor: COLORS.map((_, i) => COLORS[(i + 3) % COLORS.length]), borderColor: 'rgba(0,0,0,0)', borderWidth: 3, hoverOffset: 6 }] },
+    options: {
+      responsive: true,
+      animation: { duration: 400 },
+      cutout: '65%',
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => `${c.label}: ${fmtBytes(c.raw)}` } }
+      }
+    }
+  });
+}
+
+async function refreshApps() {
+  const data = await api(`/api/applications?hours=${currentHours}`);
+  appChart.data.labels = data.map(r => r.app);
+  appChart.data.datasets[0].data = data.map(r => r.total_bytes);
+  appChart.update('none');
+
+  const palette = COLORS.map((_, i) => COLORS[(i + 3) % COLORS.length]);
+  document.getElementById('app-legend').innerHTML = data.map((r, i) => `
+    <div class="legend-item">
+      <span class="legend-dot" style="background:${palette[i % palette.length]}"></span>
+      <span style="color:var(--text)">${r.app}</span>
+      <span style="color:var(--text-dim);margin-left:auto;">${fmtBytes(r.total_bytes)}</span>
+    </div>`).join('');
+}
+
+// ── Chart: Top Talkers ────────────────────────────────────────────────
+let talkersChart;
+function initTalkersChart() {
+  const ctx = document.getElementById('talkersChart').getContext('2d');
+  talkersChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: [],
+      datasets: [{
+        data: [],
+        backgroundColor: COLORS.map(c => c + '99'),
+        borderColor: COLORS,
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      animation: { duration: 400 },
+      indexAxis: 'y',
+      scales: {
+        x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { callback: v => fmtBytes(v) } },
+        y: { grid: { display: false } }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => fmtBytes(c.raw) } }
+      }
+    }
+  });
+}
+
+async function refreshTalkers() {
+  const data = await api(`/api/top-talkers?limit=8&hours=${currentHours}`);
+  talkersChart.data.labels = data.map(r => r.src_ip);
+  talkersChart.data.datasets[0].data = data.map(r => r.total_bytes);
+  talkersChart.update('none');
+}
+
+// ── Sankey ─────────────────────────────────────────────────────────────
+async function refreshSankey() {
+  const data  = await api(`/api/sankey?hours=${currentHours}`);
+  const svg   = document.getElementById('sankey-svg');
+  const empty = document.getElementById('sankey-empty');
+
+  if (!data.nodes || data.nodes.length === 0) {
+    svg.style.display   = 'none';
+    empty.style.display = 'flex';
+    return;
+  }
+
+  svg.style.display   = 'block';
+  empty.style.display = 'none';
+  svg.innerHTML = '';
+
+  const W = svg.parentElement.clientWidth || 900;
+  const H = Math.max(240, data.nodes.length * 22);
+  svg.setAttribute('height', H);
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+  const sankeyGen = d3.sankey()
+    .nodeId(d => d.index)
+    .nodeWidth(14)
+    .nodePadding(10)
+    .extent([[1, 6], [W - 1, H - 6]]);
+
+  const graph = sankeyGen({
+    nodes: data.nodes.map((d, i) => ({ ...d, index: i })),
+    links: data.links.map(l => ({ ...l })),
+  });
+
+  const s = d3.select(svg);
+
+  s.append('g').attr('fill', 'none')
+    .selectAll('path').data(graph.links).join('path')
+      .attr('d', d3.sankeyLinkHorizontal())
+      .attr('stroke', (_, i) => COLORS[i % COLORS.length])
+      .attr('stroke-width', d => Math.max(1, d.width))
+      .attr('stroke-opacity', 0.3)
+    .append('title')
+      .text(d => `${d.source.label} → ${d.target.label}\n${fmtBytes(d.value)}`);
+
+  const node = s.append('g').selectAll('g').data(graph.nodes).join('g');
+
+  node.append('rect')
+    .attr('x', d => d.x0).attr('y', d => d.y0)
+    .attr('height', d => Math.max(2, d.y1 - d.y0))
+    .attr('width',  d => d.x1 - d.x0)
+    .attr('fill',   (_, i) => COLORS[i % COLORS.length])
+    .attr('rx', 2)
+    .append('title').text(d => `${d.label}\n${fmtBytes(d.value)}`);
+
+  node.append('text')
+    .attr('x', d => d.x0 < W / 2 ? d.x1 + 7 : d.x0 - 7)
+    .attr('y', d => (d.y0 + d.y1) / 2)
+    .attr('dy', '0.35em')
+    .attr('text-anchor', d => d.x0 < W / 2 ? 'start' : 'end')
+    .attr('fill', '#94a3b8').attr('font-size', '11px')
+    .text(d => d.label);
+}
+
+// ── Stats ──────────────────────────────────────────────────────────────
+function applyStats(s) {
+  document.getElementById('s-flows').textContent = fmtNum(s.total_flows);
+  document.getElementById('s-bytes').textContent = fmtBytes(s.total_bytes);
+  document.getElementById('s-src').textContent   = fmtNum(s.unique_sources);
+  document.getElementById('s-dst').textContent   = fmtNum(s.unique_destinations);
+  document.getElementById('last-update').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  const label = currentHours === 1 ? 'last hour' : `last ${currentHours}h`;
+  document.querySelectorAll('.stat-sub').forEach(el => el.textContent = label);
+}
+
+// ── API helper ─────────────────────────────────────────────────────────
+async function api(path) {
+  try { return await (await fetch(path)).json(); }
+  catch { return []; }
+}
+
+// ── WebSocket ──────────────────────────────────────────────────────────
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'stats') applyStats(msg.data);
+  };
+  ws.onclose = () => setTimeout(connectWS, 3000);
+}
+
+// ── Refresh all charts ─────────────────────────────────────────────────
+async function refreshAll() {
+  await Promise.all([refreshTraffic(), refreshProto(), refreshApps(), refreshTalkers(), refreshSankey()]);
+  applyStats(await api(`/api/stats?hours=${currentHours}`));
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────
+initTrafficChart();
+initProtoChart();
+initAppChart();
+initTalkersChart();
+refreshAll();
+setInterval(refreshAll, 15000);
+connectWS();
+</script>
+</body>
+</html>
