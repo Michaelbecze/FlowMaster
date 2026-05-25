@@ -63,28 +63,6 @@ Both hosts and ports can be changed in `config.py`.
 
 ---
 
-## Pointing your devices at FlowMaster
-
-### Cisco IOS
-
-```
-ip flow-export destination <server-ip> 2055
-ip flow-export version 5
-ip flow-export source <interface>
-
-interface <your-interface>
- ip flow ingress
-```
-
-### pfSense
-
-Go to **Services → softflowd** and set:
-- **Host**: `<server-ip>`
-- **Port**: `2055`
-- **Version**: `NetFlow v5`
-
----
-
 ## Project Structure
 
 ```
