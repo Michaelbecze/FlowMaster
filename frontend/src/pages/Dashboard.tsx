@@ -1,7 +1,9 @@
 import ReactECharts from "echarts-for-react";
 import { useEffect, useMemo, useState } from "react";
 import { FlowDrilldown } from "../components/FlowDrilldown";
-import { SiteStatusBadge } from "../components/SiteStatusBadge";
+import { FlowMapSankey, FlowMapData } from "../components/FlowMapSankey";
+import { SiteSelector } from "../components/SiteSelector";
+import { TrafficBucket, TrafficChart } from "../components/TrafficChart";
 import { apiGetJson } from "../services/api";
 import { useRealtimeStats } from "../services/realtime";
 
@@ -15,6 +17,11 @@ const SERIES_COLORS = [
   "var(--series-7)",
   "var(--series-8)",
 ];
+
+const RANGE_OPTIONS = ["1h", "3h", "6h", "12h", "24h"] as const;
+type Range = (typeof RANGE_OPTIONS)[number];
+const RANGE_TO_HOURS: Record<Range, number> = { "1h": 1, "3h": 3, "6h": 6, "12h": 12, "24h": 24 };
+const FINE_BUCKET_RANGE_HOURS = 2;
 
 interface SiteStatusRow {
   site_id: string;
@@ -37,6 +44,16 @@ interface TopTalkersEnvelope {
   empty: boolean;
 }
 
+interface TrafficOverTimeEnvelope {
+  data: TrafficBucket[];
+  empty: boolean;
+}
+
+interface FlowMapEnvelope {
+  data: FlowMapData;
+  empty: boolean;
+}
+
 const FULL_REFRESH_INTERVAL_MS = 15_000;
 
 function formatBytes(bytes: number): string {
@@ -48,12 +65,21 @@ function formatBytes(bytes: number): string {
 
 export function Dashboard() {
   const [sites, setSites] = useState<SiteStatusRow[]>([]);
+  const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
+  const [range, setRange] = useState<Range>("1h");
+
   const [summary, setSummary] = useState<SummaryEnvelope | null>(null);
   const [topTalkers, setTopTalkers] = useState<TopTalkersEnvelope | null>(null);
-  const [drilldownOpen, setDrilldownOpen] = useState(false);
+  const [trafficOverTime, setTrafficOverTime] = useState<TrafficOverTimeEnvelope | null>(null);
+  const [flowMap, setFlowMap] = useState<FlowMapEnvelope | null>(null);
 
-  const siteIds = useMemo(() => sites.map((s) => s.site_id), [sites]);
-  const realtime = useRealtimeStats(siteIds);
+  const [drilldownWindow, setDrilldownWindow] = useState<{ start: Date; end: Date } | null>(null);
+
+  const allSiteIds = useMemo(() => sites.map((s) => s.site_id), [sites]);
+  // Selecting a site scopes every chart to it; "All sites" (null) keeps the
+  // org-wide aggregate view every endpoint already supports via a multi-id filter.
+  const scopedSiteIds = selectedSiteId ? [selectedSiteId] : allSiteIds;
+  const realtime = useRealtimeStats(scopedSiteIds);
 
   useEffect(() => {
     apiGetJson<{ data: SiteStatusRow[] }>("/api/v1/query/sites/status").then((res) =>
@@ -62,24 +88,33 @@ export function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (siteIds.length === 0) return;
-    const sitesParam = siteIds.join(",");
+    if (scopedSiteIds.length === 0) return;
+    const sitesParam = scopedSiteIds.join(",");
 
     async function refresh(): Promise<void> {
-      const [summaryRes, talkersRes] = await Promise.all([
-        apiGetJson<SummaryEnvelope>(`/api/v1/query/summary?range=1h&sites=${sitesParam}`),
-        apiGetJson<TopTalkersEnvelope>(`/api/v1/query/top-talkers?range=1h&sites=${sitesParam}`),
+      const [summaryRes, talkersRes, trafficRes, flowMapRes] = await Promise.all([
+        apiGetJson<SummaryEnvelope>(`/api/v1/query/summary?range=${range}&sites=${sitesParam}`),
+        apiGetJson<TopTalkersEnvelope>(`/api/v1/query/top-talkers?range=${range}&sites=${sitesParam}`),
+        apiGetJson<TrafficOverTimeEnvelope>(
+          `/api/v1/query/traffic-over-time?range=${range}&sites=${sitesParam}`,
+        ),
+        apiGetJson<FlowMapEnvelope>(`/api/v1/query/flow-map?range=${range}&sites=${sitesParam}`),
       ]);
       setSummary(summaryRes);
       setTopTalkers(talkersRes);
+      setTrafficOverTime(trafficRes);
+      setFlowMap(flowMapRes);
     }
 
     refresh();
     const interval = setInterval(refresh, FULL_REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [siteIds]);
+    // Depends on scopedSiteIds.join(",") (a stable string), not the array reference,
+    // so this only re-fires when the actual site selection changes.
+  }, [scopedSiteIds.join(","), range]);
 
   const liveTotalBytes = realtime.latestStats?.summary.total_bytes ?? summary?.data.total_bytes;
+  const bucketSeconds = RANGE_TO_HOURS[range] <= FINE_BUCKET_RANGE_HOURS ? 60 : 3600;
 
   const protocolOption = useMemo(() => {
     const breakdown = summary?.data.application_breakdown ?? [];
@@ -125,14 +160,43 @@ export function Dashboard() {
           justifyContent: "space-between",
           alignItems: "center",
           marginBottom: 16,
+          flexWrap: "wrap",
+          gap: 12,
         }}
       >
         <h1 style={{ fontSize: 18, margin: 0 }}>Dashboard</h1>
-        <span role="status" aria-live="polite" style={{ fontSize: 12, color: "var(--text-muted)" }}>
-          {realtime.connectionState === "connected" && "● Live"}
-          {realtime.connectionState === "connecting" && "Connecting…"}
-          {realtime.connectionState === "reconnecting" && "⚠ Reconnecting…"}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div role="tablist" aria-label="Time range" style={{ display: "flex", gap: 4 }}>
+            {RANGE_OPTIONS.map((r) => (
+              <button
+                key={r}
+                role="tab"
+                aria-selected={range === r}
+                onClick={() => setRange(r)}
+                style={{
+                  padding: "4px 10px",
+                  fontSize: 12,
+                  borderRadius: 6,
+                  border: "1px solid var(--border)",
+                  background: range === r ? "var(--series-1)" : "transparent",
+                  color: range === r ? "#fff" : "var(--text-primary)",
+                }}
+              >
+                {r.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          <span role="status" aria-live="polite" style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            {realtime.connectionState === "connected" && "● Live"}
+            {realtime.connectionState === "connecting" && "Connecting…"}
+            {realtime.connectionState === "reconnecting" && "⚠ Reconnecting…"}
+          </span>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="card-title">Site</div>
+        <SiteSelector sites={sites} selectedSiteId={selectedSiteId} onSelect={setSelectedSiteId} />
       </div>
 
       <div
@@ -144,28 +208,43 @@ export function Dashboard() {
         }}
       >
         <div className="card">
-          <div className="card-title">Total Volume (1h)</div>
+          <div className="card-title">Total Volume ({range})</div>
           <div style={{ fontSize: 28, fontWeight: 700 }}>
             {liveTotalBytes != null ? formatBytes(liveTotalBytes) : "—"}
           </div>
         </div>
         <div className="card">
-          <div className="card-title">Sites</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {sites.length === 0 && <span className="empty-state">No sites onboarded yet</span>}
-            {sites.map((s) => (
-              <div key={s.site_id} style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>{s.site_id.slice(0, 8)}</span>
-                <SiteStatusBadge status={realtime.siteStatus[s.site_id] ?? s.status} />
-              </div>
-            ))}
+          <div className="card-title">Total Packets ({range})</div>
+          <div style={{ fontSize: 28, fontWeight: 700 }}>
+            {summary?.data.total_packets != null ? summary.data.total_packets.toLocaleString() : "—"}
           </div>
         </div>
         <div className="card">
-          <button onClick={() => setDrilldownOpen(true)} style={{ width: "100%", padding: 10 }}>
+          <button
+            onClick={() => setDrilldownWindow({ start: new Date(Date.now() - 5 * 60 * 1000), end: new Date() })}
+            style={{ width: "100%", padding: 10 }}
+          >
             View flows (last 5m)
           </button>
         </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="card-title">Traffic Volume</div>
+        {trafficOverTime?.empty ? (
+          <div className="empty-state">No traffic in this window.</div>
+        ) : trafficOverTime ? (
+          <TrafficChart
+            data={trafficOverTime.data}
+            bucketSeconds={bucketSeconds}
+            onPointClick={(bucket) => {
+              const start = new Date(bucket.bucket);
+              setDrilldownWindow({ start, end: new Date(start.getTime() + bucketSeconds * 1000) });
+            }}
+          />
+        ) : (
+          <p>Loading…</p>
+        )}
       </div>
 
       <div
@@ -194,11 +273,23 @@ export function Dashboard() {
         </div>
       </div>
 
-      {drilldownOpen && (
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="card-title">Flow Map</div>
+        {flowMap?.empty ? (
+          <div className="empty-state">No traffic in this window.</div>
+        ) : flowMap ? (
+          <FlowMapSankey data={flowMap.data} />
+        ) : (
+          <p>Loading…</p>
+        )}
+      </div>
+
+      {drilldownWindow && (
         <FlowDrilldown
-          start={new Date(Date.now() - 5 * 60 * 1000)}
-          end={new Date()}
-          onClose={() => setDrilldownOpen(false)}
+          start={drilldownWindow.start}
+          end={drilldownWindow.end}
+          siteId={selectedSiteId}
+          onClose={() => setDrilldownWindow(null)}
         />
       )}
     </div>

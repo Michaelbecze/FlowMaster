@@ -32,10 +32,12 @@ function formatBytes(bytes: number): string {
 export function FlowDrilldown({
   start,
   end,
+  siteId,
   onClose,
 }: {
   start: Date;
   end: Date;
+  siteId?: string | null;
   onClose: () => void;
 }) {
   const [rows, setRows] = useState<FlowRow[] | null>(null);
@@ -47,6 +49,7 @@ export function FlowDrilldown({
       start: start.toISOString(),
       end: end.toISOString(),
     });
+    if (siteId) params.set("site_id", siteId);
     apiGetJson<FlowsEnvelope>(`/api/v1/query/flows?${params}`).then((res) => {
       if (cancelled) return;
       setRows(res.data);
@@ -55,7 +58,7 @@ export function FlowDrilldown({
     return () => {
       cancelled = true;
     };
-  }, [start, end]);
+  }, [start, end, siteId]);
 
   return (
     <div className="card" role="region" aria-label="Flow drill-down">
