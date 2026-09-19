@@ -1,5 +1,5 @@
 import ReactECharts from "echarts-for-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FlowDrilldown } from "../components/FlowDrilldown";
 import { FlowMapSankey, FlowMapData } from "../components/FlowMapSankey";
 import { SiteSelector } from "../components/SiteSelector";
@@ -75,6 +75,16 @@ export function Dashboard() {
 
   const [drilldownWindow, setDrilldownWindow] = useState<{ start: Date; end: Date } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const drilldownRef = useRef<HTMLDivElement>(null);
+
+  // FlowDrilldown renders at the bottom of a long page; without this, opening it
+  // from "View flows" or a chart click can land below the fold and look like the
+  // click did nothing.
+  useEffect(() => {
+    if (drilldownWindow) {
+      drilldownRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [drilldownWindow]);
 
   const allSiteIds = useMemo(() => sites.map((s) => s.site_id), [sites]);
   // Selecting a site scopes every chart to it; "All sites" (null) keeps the
@@ -302,12 +312,14 @@ export function Dashboard() {
       </div>
 
       {drilldownWindow && (
-        <FlowDrilldown
-          start={drilldownWindow.start}
-          end={drilldownWindow.end}
-          siteId={selectedSiteId}
-          onClose={() => setDrilldownWindow(null)}
-        />
+        <div ref={drilldownRef}>
+          <FlowDrilldown
+            start={drilldownWindow.start}
+            end={drilldownWindow.end}
+            siteId={selectedSiteId}
+            onClose={() => setDrilldownWindow(null)}
+          />
+        </div>
       )}
     </div>
   );
