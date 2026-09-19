@@ -82,15 +82,19 @@ class TestScenario1RealtimeVisibility:
             token = login.json()["session_token"]
             headers = {"Authorization": f"Bearer {token}"}
 
+            # Unique per run: this test may run repeatedly against persistent infra
+            # (docker-compose volumes survive between runs), and network_identity is
+            # unique per site (services/identity/migrations/0003_site.sql).
+            network_identity = f"203.0.113.{50 + int(time.time()) % 200}"
             site_resp = client.post(
                 "/api/v1/identity/sites",
-                json={"name": "scenario-1-site", "network_identity": "203.0.113.50"},
+                json={"name": "scenario-1-site", "network_identity": network_identity},
                 headers=headers,
             )
             assert site_resp.status_code == 201
             site_id = site_resp.json()["id"]
 
-            _send_synthetic_packet("203.0.113.50", netflow_host="localhost", netflow_port=2055)
+            _send_synthetic_packet(network_identity, netflow_host="localhost", netflow_port=2055)
 
             deadline = time.monotonic() + 5.0
             summary = None

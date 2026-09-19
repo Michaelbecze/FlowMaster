@@ -19,13 +19,20 @@ services:
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.8-alpine
+    environment:
+      # Without a password, the official image disables network access for the
+      # 'default' user entirely — only loopback works, so flow-writer/query-api in
+      # their own containers couldn't connect at all.
+      CLICKHOUSE_PASSWORD: flowmaster
     ports:
       - "8123:8123"
       - "9000:9000"
     volumes:
       - clickhouse-data:/var/lib/clickhouse
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      # 127.0.0.1, not localhost: this host's IPv6 loopback isn't reachable, and
+      # ClickHouse only binds IPv4, so "localhost" resolving to ::1 first fails the check.
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8123/ping"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -113,7 +120,7 @@ services:
       dockerfile: services/flow-writer/Dockerfile
     environment:
       KAFKA_BROKERS: broker:9092
-      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_URL: http://default:flowmaster@clickhouse:8123
       DATABASE_URL: postgresql://flowmaster:flowmaster@postgres:5432/flowmaster
       PORT: "8003"
     ports: ["8003:8003"]
@@ -146,7 +153,7 @@ services:
       context: ..
       dockerfile: services/query-api/Dockerfile
     environment:
-      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_URL: http://default:flowmaster@clickhouse:8123
       DATABASE_URL: postgresql://flowmaster:flowmaster@postgres:5432/flowmaster
       PORT: "8005"
     ports: ["8005:8005"]

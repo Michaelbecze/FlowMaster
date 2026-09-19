@@ -42,6 +42,11 @@ class FakeClickHouseClient:
         self.inserted_batches: list[list] = []
 
     async def insert(self, table, rows, column_names) -> None:  # noqa: ANN001
+        # A real network client (e.g. the aiohttp-backed ClickHouse client) genuinely
+        # suspends here; that suspension is where a self-cancelled flush task's pending
+        # CancelledError actually gets delivered. A fake that resolves synchronously
+        # would hide that bug entirely, so this yields control back to the loop too.
+        await asyncio.sleep(0)
         assert table == "flow_record"
         self.inserted_batches.append(rows)
 
@@ -82,6 +87,22 @@ class TestBatchWriter:
         await asyncio.sleep(0)  # let the add()-triggered flush task run
 
         assert len(fake_client.inserted_batches) == 1
+
+    async def test_delayed_flush_timer_actually_writes_the_batch(self, monkeypatch) -> None:
+        """Regression test: the timer-triggered flush() previously cancelled its own
+        running task before the insert ran, silently discarding the batch (caught via
+        docker-compose end-to-end testing — see infra verification notes)."""
+        fake_client = FakeClickHouseClient()
+        monkeypatch.setattr("src.batch_writer.get_client", _fake_get_client(fake_client))
+
+        writer = BatchWriter()
+        writer._max_seconds = 0.01  # noqa: SLF001 — test-only override of the flush delay
+        await writer.add(_event(src_port=1))
+        await writer.add(_event(src_port=2))
+        await asyncio.sleep(0.05)  # let the delayed-flush timer itself call flush()
+
+        assert len(fake_client.inserted_batches) == 1
+        assert len(fake_client.inserted_batches[0]) == 2
 
 
 def _fake_get_client(fake_client: FakeClickHouseClient):

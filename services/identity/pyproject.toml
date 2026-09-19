@@ -7,7 +7,7 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "asyncpg>=0.29",
-    "passlib[bcrypt]>=1.7",
+    "bcrypt>=4.1",
     "flowmaster-shared",
 ]
 

@@ -84,9 +84,14 @@ class BatchWriter:
     async def flush(self) -> int:
         async with self._lock:
             batch, self._buffer = self._buffer, []
-            if self._flush_task is not None:
+            # _flush_after_delay() calls flush() on itself once its sleep elapses — cancelling
+            # self._flush_task unconditionally would cancel the currently-running task at its
+            # very next await (the insert below), silently discarding the batch. Only cancel a
+            # *pending* timer task, never the one already executing this flush.
+            current_task = asyncio.current_task()
+            if self._flush_task is not None and self._flush_task is not current_task:
                 self._flush_task.cancel()
-                self._flush_task = None
+            self._flush_task = None
         if not batch:
             return 0
 

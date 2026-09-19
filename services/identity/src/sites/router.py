@@ -6,7 +6,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends
+import asyncpg
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from ..auth.session import AuthenticatedUser, require_user
@@ -35,6 +36,14 @@ async def _organization_id(conn) -> str:
     return row["id"]
 
 
+def _to_site_response(row) -> SiteResponse:
+    # asyncpg returns UUID columns as uuid.UUID, not str; every field crossing the
+    # Pydantic/JSON boundary must be cast explicitly (Pydantic 2 does not coerce UUID -> str).
+    data = dict(row)
+    data["id"] = str(data["id"])
+    return SiteResponse(**data)
+
+
 @router.get("", response_model=list[SiteResponse])
 async def list_sites(user: AuthenticatedUser = Depends(require_user)) -> list[SiteResponse]:
     pool = await get_pool()
@@ -42,7 +51,7 @@ async def list_sites(user: AuthenticatedUser = Depends(require_user)) -> list[Si
         rows = await conn.fetch(
             "SELECT id, name, network_identity, status, last_seen_at, created_at FROM site"
         )
-    return [SiteResponse(**dict(r)) for r in rows]
+    return [_to_site_response(r) for r in rows]
 
 
 @router.post("", response_model=SiteResponse, status_code=201)
@@ -52,18 +61,24 @@ async def create_site(
     pool = await get_pool()
     async with pool.acquire() as conn:
         org_id = await _organization_id(conn)
-        row = await conn.fetchrow(
-            """
-            INSERT INTO site (organization_id, name, network_identity, created_by)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id, name, network_identity, status, last_seen_at, created_at
-            """,
-            org_id,
-            body.name,
-            body.network_identity,
-            user.user_id,
-        )
-    return SiteResponse(**dict(row))
+        try:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO site (organization_id, name, network_identity, created_by)
+                VALUES ($1, $2, $3, $4)
+                RETURNING id, name, network_identity, status, last_seen_at, created_at
+                """,
+                org_id,
+                body.name,
+                body.network_identity,
+                user.user_id,
+            )
+        except asyncpg.UniqueViolationError as exc:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"a site with network_identity '{body.network_identity}' already exists",
+            ) from exc
+    return _to_site_response(row)
 
 
 class SiteSeenRequest(BaseModel):
