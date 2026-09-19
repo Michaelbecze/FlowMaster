@@ -202,7 +202,9 @@ services:
   frontend:
     build: ../frontend
     environment:
-      VITE_GATEWAY_URL: http://localhost:8080
+      # Consumed server-side by vite.config.ts's dev-server proxy, which runs inside
+      # this container — must be the container-network address, not the host's.
+      VITE_GATEWAY_URL: http://gateway:8080
     ports: ["5173:5173"]
     depends_on:
       - gateway
