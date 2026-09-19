@@ -180,25 +180,23 @@ export function Dashboard() {
               <button
                 key={r}
                 role="tab"
+                className="pill-btn"
                 aria-selected={range === r}
                 onClick={() => setRange(r)}
-                style={{
-                  padding: "4px 10px",
-                  fontSize: 12,
-                  borderRadius: 6,
-                  border: "1px solid var(--border)",
-                  background: range === r ? "var(--series-1)" : "transparent",
-                  color: range === r ? "#fff" : "var(--text-primary)",
-                }}
               >
                 {r.toUpperCase()}
               </button>
             ))}
           </div>
-          <span role="status" aria-live="polite" style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            {realtime.connectionState === "connected" && "● Live"}
-            {realtime.connectionState === "connecting" && "Connecting…"}
-            {realtime.connectionState === "reconnecting" && "⚠ Reconnecting…"}
+          <span
+            role="status"
+            aria-live="polite"
+            className={`live-badge${realtime.connectionState === "reconnecting" ? " reconnecting" : ""}`}
+          >
+            <span className="pulse-dot" aria-hidden="true" />
+            {realtime.connectionState === "connected" && "LIVE"}
+            {realtime.connectionState === "connecting" && "CONNECTING…"}
+            {realtime.connectionState === "reconnecting" && "RECONNECTING…"}
           </span>
         </div>
       </div>
@@ -226,22 +224,22 @@ export function Dashboard() {
           marginBottom: 20,
         }}
       >
-        <div className="card">
+        <div className="card stat-card cyan">
           <div className="card-title">Total Volume ({range})</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>
+          <div className="stat-value cyan">
             {liveTotalBytes != null ? formatBytes(liveTotalBytes) : "—"}
           </div>
         </div>
-        <div className="card">
+        <div className="card stat-card purple">
           <div className="card-title">Total Packets ({range})</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>
+          <div className="stat-value purple">
             {summary?.data.total_packets != null ? summary.data.total_packets.toLocaleString() : "—"}
           </div>
         </div>
-        <div className="card">
+        <div className="card stat-card green" style={{ display: "flex", alignItems: "center" }}>
           <button
             onClick={() => setDrilldownWindow({ start: new Date(Date.now() - 5 * 60 * 1000), end: new Date() })}
-            style={{ width: "100%", padding: 10 }}
+            style={{ width: "100%" }}
           >
             View flows (last 5m)
           </button>

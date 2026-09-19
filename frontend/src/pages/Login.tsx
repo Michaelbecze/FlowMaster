@@ -34,7 +34,26 @@ export function Login() {
       }}
     >
       <form onSubmit={onSubmit} className="card" style={{ width: 320 }} aria-label="Sign in">
-        <h1 style={{ fontSize: 18, margin: "0 0 16px" }}>FlowMaster</h1>
+        <div className="app-logo" style={{ padding: 0, marginBottom: 20 }}>
+          <svg viewBox="0 0 28 28" fill="none" width="26" height="26" aria-hidden="true">
+            <path
+              d="M2 18 Q7 8 14 14 Q21 20 26 10"
+              stroke="#00d4ff"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              fill="none"
+            />
+            <path
+              d="M2 22 Q7 12 14 18 Q21 24 26 14"
+              stroke="#8b5cf6"
+              strokeWidth="2"
+              strokeLinecap="round"
+              fill="none"
+              opacity="0.7"
+            />
+          </svg>
+          FLOWMASTER
+        </div>
         <label htmlFor="email" style={{ display: "block", marginBottom: 6 }}>
           Email
         </label>

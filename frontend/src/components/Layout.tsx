@@ -11,8 +11,25 @@ export function Layout() {
   return (
     <div className="app-shell">
       <nav className="app-nav" aria-label="Primary">
-        <div style={{ fontWeight: 700, padding: "8px 12px 20px", letterSpacing: "0.04em" }}>
-          FlowMaster
+        <div className="app-logo">
+          <svg viewBox="0 0 28 28" fill="none" width="24" height="24" aria-hidden="true">
+            <path
+              d="M2 18 Q7 8 14 14 Q21 20 26 10"
+              stroke="#00d4ff"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              fill="none"
+            />
+            <path
+              d="M2 22 Q7 12 14 18 Q21 24 26 14"
+              stroke="#8b5cf6"
+              strokeWidth="2"
+              strokeLinecap="round"
+              fill="none"
+              opacity="0.7"
+            />
+          </svg>
+          FLOWMASTER
         </div>
         {/* NavLink sets aria-current="page" on the active route automatically. */}
         {NAV_ITEMS.map((item) => (

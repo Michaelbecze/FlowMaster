@@ -21,15 +21,9 @@ export function SiteSelector({
     <div role="tablist" aria-label="Site" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
       <button
         role="tab"
+        className="pill-btn"
         aria-selected={selectedSiteId === null}
         onClick={() => onSelect(null)}
-        style={{
-          padding: "6px 12px",
-          borderRadius: 20,
-          border: "1px solid var(--border)",
-          background: selectedSiteId === null ? "var(--series-1)" : "transparent",
-          color: selectedSiteId === null ? "#fff" : "var(--text-primary)",
-        }}
       >
         All sites
       </button>
@@ -37,18 +31,10 @@ export function SiteSelector({
         <button
           key={s.site_id}
           role="tab"
+          className="pill-btn"
           aria-selected={selectedSiteId === s.site_id}
           onClick={() => onSelect(s.site_id)}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "6px 12px",
-            borderRadius: 20,
-            border: "1px solid var(--border)",
-            background: selectedSiteId === s.site_id ? "var(--series-1)" : "transparent",
-            color: selectedSiteId === s.site_id ? "#fff" : "var(--text-primary)",
-          }}
+          style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
         >
           {s.site_id.slice(0, 8)}
           <SiteStatusBadge status={s.status} />
