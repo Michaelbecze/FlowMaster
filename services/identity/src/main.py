@@ -13,6 +13,7 @@ from shared.logging import configure_logging
 from .auth.api_tokens import router as api_tokens_router
 from .auth.session import router as session_router
 from .db import close_pool
+from .retention.internal_router import internal_router as retention_internal_router
 from .sites.router import internal_router as sites_internal_router
 from .sites.router import router as sites_router
 
@@ -23,6 +24,7 @@ app.include_router(session_router)
 app.include_router(api_tokens_router)
 app.include_router(sites_router)
 app.include_router(sites_internal_router)
+app.include_router(retention_internal_router)
 
 
 @app.on_event("shutdown")

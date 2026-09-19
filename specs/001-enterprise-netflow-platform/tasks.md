@@ -141,20 +141,20 @@ generate/export a report — independent of whether real-time ingestion or alert
 
 ### Tests for User Story 2
 
-- [ ] T056 [P] [US2] Contract test for `POST /reports`, `GET /reports/{id}`, `GET /reports/{id}/export` in `services/query-api/tests/contract/test_reports_endpoints.py`, asserting exported output matches on-screen results (SC-009)
-- [ ] T057 [P] [US2] Query-performance test asserting a filtered query over 30 days of seeded ClickHouse data returns in under 3 seconds for 95% of queries (SC-003) in `services/query-api/tests/performance/test_query_latency.py`
-- [ ] T058 [US2] Integration test automating `quickstart.md` Scenario 2 (filtered query, CSV export round-trip, out-of-retention query response) in `services/query-api/tests/integration/test_scenario_historical_reporting.py`
+- [X] T056 [P] [US2] Contract test for `POST /reports`, `GET /reports/{id}`, `GET /reports/{id}/export` in `services/query-api/tests/contract/test_reports_endpoints.py`, asserting exported output matches on-screen results (SC-009)
+- [X] T057 [P] [US2] Query-performance test asserting a filtered query over 30 days of seeded ClickHouse data returns in under 3 seconds for 95% of queries (SC-003) in `services/query-api/tests/performance/test_query_latency.py`
+- [X] T058 [US2] Integration test automating `quickstart.md` Scenario 2 (filtered query, CSV export round-trip, out-of-retention query response) in `services/query-api/tests/integration/test_scenario_historical_reporting.py`
 
 ### Implementation for User Story 2
 
-- [ ] T059 [P] [US2] Write the PostgreSQL migration for `Report` (`id` UUID PK, `owner_user_id` FK, `filter_definition` JSONB, `name` nullable, `created_at`) in `services/query-api/migrations/0001_report.sql`
-- [ ] T060 [US2] Implement `POST /reports` (create saved/ad hoc report from a filter definition) in `services/query-api/src/routes/reports.py` (depends on T059)
-- [ ] T061 [US2] Implement `GET /reports/{id}` (retrieve current results for a saved report's filter) in `services/query-api/src/routes/reports.py` (depends on T060)
-- [ ] T062 [US2] Implement `GET /reports/{id}/export?format=csv` producing output that exactly matches the on-screen filtered results (SC-009) in `services/query-api/src/routes/reports.py` (depends on T060)
-- [ ] T063 [US2] Extend `GET /flows` and `GET /reports/*` to return an explicit `"outside_retention"` reason (distinct from `"no_traffic"`) when the requested range exceeds the configured retention window in `services/query-api/src/routes/flows.py` and `services/query-api/src/routes/reports.py` (depends on T049, T060)
-- [ ] T064 [P] [US2] Implement the Reports page (date-range/site/protocol/application/host filters, results table, export action) in `frontend/src/pages/Reports.tsx`
-- [ ] T065 [US2] Add explicit empty/no-data and "outside retention" states to the Reports page in `frontend/src/pages/Reports.tsx` (FR-018) (depends on T063, T064)
-- [ ] T066 [US2] Add keyboard navigation and screen-reader support to the Reports page per FR-016 in `frontend/src/pages/Reports.tsx`
+- [X] T059 [P] [US2] Write the PostgreSQL migration for `Report` (`id` UUID PK, `owner_user_id` FK, `filter_definition` JSONB, `name` nullable, `created_at`) in `services/query-api/migrations/0001_report.sql`
+- [X] T060 [US2] Implement `POST /reports` (create saved/ad hoc report from a filter definition) in `services/query-api/src/routes/reports.py` (depends on T059)
+- [X] T061 [US2] Implement `GET /reports/{id}` (retrieve current results for a saved report's filter) in `services/query-api/src/routes/reports.py` (depends on T060)
+- [X] T062 [US2] Implement `GET /reports/{id}/export?format=csv` producing output that exactly matches the on-screen filtered results (SC-009) in `services/query-api/src/routes/reports.py` (depends on T060)
+- [X] T063 [US2] Extend `GET /flows` and `GET /reports/*` to return an explicit `"outside_retention"` reason (distinct from `"no_traffic"`) when the requested range exceeds the configured retention window in `services/query-api/src/routes/flows.py` and `services/query-api/src/routes/reports.py` (depends on T049, T060)
+- [X] T064 [P] [US2] Implement the Reports page (date-range/site/protocol/application/host filters, results table, export action) in `frontend/src/pages/Reports.tsx`
+- [X] T065 [US2] Add explicit empty/no-data and "outside retention" states to the Reports page in `frontend/src/pages/Reports.tsx` (FR-018) (depends on T063, T064)
+- [X] T066 [US2] Add keyboard navigation and screen-reader support to the Reports page per FR-016 in `frontend/src/pages/Reports.tsx`
 
 **Checkpoint**: User Stories 1 AND 2 both work independently
 

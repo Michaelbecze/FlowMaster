@@ -1,6 +1,6 @@
 """GET /flows — drill-down into individual flow records for a filtered window
-(User Story 1 & 2, FR-003, FR-006). The "outside_retention" reason (FR-005 edge case)
-is added on top of this in User Story 2 (tasks.md T063)."""
+(User Story 1 & 2, FR-003, FR-006), including the "outside_retention" reason
+(FR-005 edge case) added in User Story 2."""
 
 from __future__ import annotations
 
@@ -10,12 +10,10 @@ from fastapi import APIRouter, Depends, Query
 
 from shared.api.envelope import EmptyReason, Envelope
 
-from .. import clickhouse
 from ..auth import require_authenticated
+from ..flow_query import FlowFilter, is_outside_retention, query_flows
 
 router = APIRouter(tags=["query"])
-
-_PAGE_SIZE = 100
 
 
 @router.get("/flows")
@@ -29,49 +27,17 @@ async def get_flows(
     page: int = Query(1, ge=1),
     _auth: str = Depends(require_authenticated),
 ) -> Envelope[list[dict]]:
-    conditions = ["timestamp >= {start:DateTime64}", "timestamp <= {end:DateTime64}"]
-    params: dict[str, object] = {"start": start, "end": end}
-
-    if site_id:
-        conditions.append("site_id = {site_id:String}")
-        params["site_id"] = site_id
-    if protocol is not None:
-        conditions.append("protocol = {protocol:UInt8}")
-        params["protocol"] = protocol
-    if application:
-        conditions.append("application = {application:String}")
-        params["application"] = application
-    if host:
-        conditions.append("(src_addr = {host:String} OR dst_addr = {host:String})")
-        params["host"] = host
-
-    offset = (page - 1) * _PAGE_SIZE
-    params["limit"] = _PAGE_SIZE
-    params["offset"] = offset
-
-    query = (
-        "SELECT timestamp, site_id, src_addr, dst_addr, src_port, dst_port, protocol, "
-        "application, bytes, packets, direction FROM flow_record WHERE "
-        + " AND ".join(conditions)
-        + " ORDER BY timestamp DESC LIMIT {limit:UInt32} OFFSET {offset:UInt32}"
+    flt = FlowFilter(
+        start=start, end=end, site_id=site_id, protocol=protocol, application=application, host=host
     )
+    data = await query_flows(flt, page=page)
 
-    client = await clickhouse.get_client()
-    rows = await client.query(query, parameters=params)
-    columns = [
-        "timestamp",
-        "site_id",
-        "src_addr",
-        "dst_addr",
-        "src_port",
-        "dst_port",
-        "protocol",
-        "application",
-        "bytes",
-        "packets",
-        "direction",
-    ]
-    data = [dict(zip(columns, row, strict=True)) for row in rows.result_rows]
+    if not data:
+        reason = (
+            EmptyReason.OUTSIDE_RETENTION
+            if await is_outside_retention(flt)
+            else EmptyReason.NO_TRAFFIC
+        )
+        return Envelope.of(data, empty=True, reason=reason)
 
-    empty = len(data) == 0
-    return Envelope.of(data, empty=empty, reason=EmptyReason.NO_TRAFFIC if empty else None)
+    return Envelope.of(data, empty=False)
