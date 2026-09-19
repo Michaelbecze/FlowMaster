@@ -154,6 +154,23 @@ async def set_site_status(site_id: str, body: SiteStatusRequest) -> None:
         await conn.execute("UPDATE site SET status = $2 WHERE id = $1", site_id, body.status)
 
 
+@internal_router.get("/scope/{user_id}")
+async def get_user_site_scope(user_id: str) -> dict:
+    """Used by Alerting's evaluator (services/alerting/src/evaluator.py) to
+    periodically re-verify a rule owner's *current* site scope — a background job has
+    no bearer token to call GET /auth/whoami with, and re-checking at evaluation time
+    (not just rule-creation time) is what stops a rule from evaluating a site the
+    owner's access to was since revoked (contracts/alerting-api.md)."""
+    pool = await db.get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT site_id FROM user_role_assignment WHERE user_id = $1", user_id
+        )
+    if any(r["site_id"] is None for r in rows):
+        return {"all_sites": True, "site_ids": []}
+    return {"all_sites": False, "site_ids": [str(r["site_id"]) for r in rows]}
+
+
 @internal_router.get("")
 async def list_sites_internal() -> list[dict]:
     """Used by Realtime's staleness sweep to enumerate known sites without a session

@@ -203,19 +203,19 @@ notification is delivered — independent of the reporting (P2) capability.
 
 ### Tests for User Story 4
 
-- [ ] T081 [P] [US4] Contract test for `GET/POST /rules`, `PATCH/DELETE /rules/{id}`, `GET /events`, `GET /events/{id}/flows` in `services/alerting/tests/contract/test_alerting_endpoints.py`
-- [ ] T082 [P] [US4] De-dup test confirming a continuously-true condition does not create a duplicate `AlertEvent`/notification (FR-013) in `services/alerting/tests/test_dedup.py`
-- [ ] T083 [US4] Integration test automating `quickstart.md` Scenario 4 (rule definition, matching synthetic traffic, notification within 60s, duplicate suppression) in `services/alerting/tests/integration/test_scenario_alerting.py`
+- [X] T081 [P] [US4] Contract test for `GET/POST /rules`, `PATCH/DELETE /rules/{id}`, `GET /events`, `GET /events/{id}/flows` in `services/alerting/tests/contract/test_alerting_endpoints.py`
+- [X] T082 [P] [US4] De-dup test confirming a continuously-true condition does not create a duplicate `AlertEvent`/notification (FR-013) in `services/alerting/tests/test_dedup.py`
+- [X] T083 [US4] Integration test automating `quickstart.md` Scenario 4 (rule definition, matching synthetic traffic, notification within 60s, duplicate suppression) in `services/alerting/tests/integration/test_scenario_alerting.py`
 
 ### Implementation for User Story 4
 
-- [ ] T084 [P] [US4] Write the PostgreSQL migrations for `AlertRule` and `AlertEvent` in `services/alerting/migrations/0001_alert_rule.sql` and `0002_alert_event.sql` per data-model.md field definitions
-- [ ] T085 [US4] Implement `GET/POST /rules` and `PATCH/DELETE /rules/{id}` in `services/alerting/src/routes/rules.py`, scoped to the owner's accessible sites (depends on T078, T084)
-- [ ] T086 [US4] Implement the Kafka consumer evaluating `flow-records.v1` against active `AlertRule`s in `services/alerting/src/evaluator.py`, stopping evaluation of sites no longer in the owner's scope (depends on T085)
-- [ ] T087 [US4] Implement Redis-backed de-dup state keyed by `alert_rule_id` and notification delivery, measured from the event's `observed_at` to satisfy the 60s target (SC-007) in `services/alerting/src/notifier.py` (depends on T086)
-- [ ] T088 [US4] Implement `GET /events` and `GET /events/{id}/flows` in `services/alerting/src/routes/events.py` (depends on T086)
-- [ ] T089 [P] [US4] Implement the Alerts page (rule definition form, alert event list, triggering-flow drill-down) in `frontend/src/pages/Alerts.tsx`
-- [ ] T090 [US4] Add explicit empty states, keyboard navigation, and screen-reader support to the Alerts page per FR-016/FR-018 in `frontend/src/pages/Alerts.tsx`
+- [X] T084 [P] [US4] Write the PostgreSQL migrations for `AlertRule` and `AlertEvent` in `services/alerting/migrations/0001_alert_rule.sql` and `0002_alert_event.sql` per data-model.md field definitions
+- [X] T085 [US4] Implement `GET/POST /rules` and `PATCH/DELETE /rules/{id}` in `services/alerting/src/routes/rules.py`, scoped to the owner's accessible sites (depends on T078, T084)
+- [X] T086 [US4] Implement the Kafka consumer evaluating `flow-records.v1` against active `AlertRule`s in `services/alerting/src/evaluator.py`, stopping evaluation of sites no longer in the owner's scope (depends on T085)
+- [X] T087 [US4] Implement Redis-backed de-dup state keyed by `alert_rule_id` and notification delivery, measured from the event's `observed_at` to satisfy the 60s target (SC-007) in `services/alerting/src/notifier.py` (depends on T086)
+- [X] T088 [US4] Implement `GET /events` and `GET /events/{id}/flows` in `services/alerting/src/routes/events.py` (depends on T086)
+- [X] T089 [P] [US4] Implement the Alerts page (rule definition form, alert event list, triggering-flow drill-down) in `frontend/src/pages/Alerts.tsx`
+- [X] T090 [US4] Add explicit empty states, keyboard navigation, and screen-reader support to the Alerts page per FR-016/FR-018 in `frontend/src/pages/Alerts.tsx`
 
 **Checkpoint**: All four user stories are independently functional
 
