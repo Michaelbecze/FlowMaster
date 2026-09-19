@@ -163,10 +163,18 @@ export function Alerts() {
   const [rules, setRules] = useState<RuleRow[] | null>(null);
   const [events, setEvents] = useState<EventRow[] | null>(null);
   const [openEventId, setOpenEventId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   async function refresh() {
-    setRules(await apiGetJson<RuleRow[]>("/api/v1/alerting/rules"));
-    setEvents(await apiGetJson<EventRow[]>("/api/v1/alerting/events"));
+    try {
+      setRules(await apiGetJson<RuleRow[]>("/api/v1/alerting/rules"));
+      setEvents(await apiGetJson<EventRow[]>("/api/v1/alerting/events"));
+      setLoadError(null);
+    } catch {
+      // Without this, a failed request leaves rules/events null forever and both
+      // sections show "Loading…" indefinitely with no indication anything failed.
+      setLoadError("Failed to load alerts. Please try refreshing the page.");
+    }
   }
 
   useEffect(() => {
@@ -176,6 +184,12 @@ export function Alerts() {
   return (
     <div>
       <h1 style={{ fontSize: 18, marginBottom: 16 }}>Alerts</h1>
+
+      {loadError && (
+        <div role="alert" className="card" style={{ marginBottom: 20, color: "var(--status-critical)" }}>
+          {loadError}
+        </div>
+      )}
 
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="card-title">Alert Rules</div>

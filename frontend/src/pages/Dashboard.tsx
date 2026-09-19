@@ -74,6 +74,7 @@ export function Dashboard() {
   const [flowMap, setFlowMap] = useState<FlowMapEnvelope | null>(null);
 
   const [drilldownWindow, setDrilldownWindow] = useState<{ start: Date; end: Date } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const allSiteIds = useMemo(() => sites.map((s) => s.site_id), [sites]);
   // Selecting a site scopes every chart to it; "All sites" (null) keeps the
@@ -82,9 +83,9 @@ export function Dashboard() {
   const realtime = useRealtimeStats(scopedSiteIds);
 
   useEffect(() => {
-    apiGetJson<{ data: SiteStatusRow[] }>("/api/v1/query/sites/status").then((res) =>
-      setSites(res.data),
-    );
+    apiGetJson<{ data: SiteStatusRow[] }>("/api/v1/query/sites/status")
+      .then((res) => setSites(res.data))
+      .catch(() => setLoadError("Failed to load sites. Retrying…"));
   }, []);
 
   useEffect(() => {
@@ -92,18 +93,26 @@ export function Dashboard() {
     const sitesParam = scopedSiteIds.join(",");
 
     async function refresh(): Promise<void> {
-      const [summaryRes, talkersRes, trafficRes, flowMapRes] = await Promise.all([
-        apiGetJson<SummaryEnvelope>(`/api/v1/query/summary?range=${range}&sites=${sitesParam}`),
-        apiGetJson<TopTalkersEnvelope>(`/api/v1/query/top-talkers?range=${range}&sites=${sitesParam}`),
-        apiGetJson<TrafficOverTimeEnvelope>(
-          `/api/v1/query/traffic-over-time?range=${range}&sites=${sitesParam}`,
-        ),
-        apiGetJson<FlowMapEnvelope>(`/api/v1/query/flow-map?range=${range}&sites=${sitesParam}`),
-      ]);
-      setSummary(summaryRes);
-      setTopTalkers(talkersRes);
-      setTrafficOverTime(trafficRes);
-      setFlowMap(flowMapRes);
+      try {
+        const [summaryRes, talkersRes, trafficRes, flowMapRes] = await Promise.all([
+          apiGetJson<SummaryEnvelope>(`/api/v1/query/summary?range=${range}&sites=${sitesParam}`),
+          apiGetJson<TopTalkersEnvelope>(`/api/v1/query/top-talkers?range=${range}&sites=${sitesParam}`),
+          apiGetJson<TrafficOverTimeEnvelope>(
+            `/api/v1/query/traffic-over-time?range=${range}&sites=${sitesParam}`,
+          ),
+          apiGetJson<FlowMapEnvelope>(`/api/v1/query/flow-map?range=${range}&sites=${sitesParam}`),
+        ]);
+        setSummary(summaryRes);
+        setTopTalkers(talkersRes);
+        setTrafficOverTime(trafficRes);
+        setFlowMap(flowMapRes);
+        setLoadError(null);
+      } catch {
+        // A failed refresh must not leave every widget stuck on "Loading…" forever
+        // with no indication anything went wrong; the previous successful data (if
+        // any) stays on screen and this banner explains why it's stale.
+        setLoadError("Failed to refresh dashboard data. Retrying every 15s…");
+      }
     }
 
     refresh();
@@ -193,6 +202,16 @@ export function Dashboard() {
           </span>
         </div>
       </div>
+
+      {loadError && (
+        <div
+          role="alert"
+          className="card"
+          style={{ marginBottom: 20, color: "var(--status-critical)" }}
+        >
+          {loadError}
+        </div>
+      )}
 
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="card-title">Site</div>

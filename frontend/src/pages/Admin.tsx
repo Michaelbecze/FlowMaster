@@ -44,7 +44,11 @@ function UsersSection() {
   const [error, setError] = useState<string | null>(null);
 
   async function refresh() {
-    setUsers(await apiGetJson<UserRow[]>("/api/v1/identity/users"));
+    try {
+      setUsers(await apiGetJson<UserRow[]>("/api/v1/identity/users"));
+    } catch {
+      setError("Failed to load users.");
+    }
   }
 
   useEffect(() => {
@@ -166,7 +170,11 @@ function SitesSection() {
   const [error, setError] = useState<string | null>(null);
 
   async function refresh() {
-    setSites(await apiGetJson<SiteRow[]>("/api/v1/identity/sites"));
+    try {
+      setSites(await apiGetJson<SiteRow[]>("/api/v1/identity/sites"));
+    } catch {
+      setError("Failed to load sites.");
+    }
   }
 
   useEffect(() => {
@@ -264,15 +272,23 @@ function SitesSection() {
 
 function AuditLogSection() {
   const [entries, setEntries] = useState<AuditLogEntryRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    apiGetJson<AuditLogEntryRow[]>("/api/v1/identity/audit-log").then(setEntries);
+    apiGetJson<AuditLogEntryRow[]>("/api/v1/identity/audit-log")
+      .then(setEntries)
+      .catch(() => setError("Failed to load the audit log."));
   }, []);
 
   return (
     <div className="card" style={{ marginBottom: 20 }}>
       <div className="card-title">Audit Log</div>
-      {entries === null && <p>Loading…</p>}
+      {error && (
+        <p role="alert" style={{ color: "var(--status-critical)" }}>
+          {error}
+        </p>
+      )}
+      {entries === null && !error && <p>Loading…</p>}
       {entries !== null && entries.length === 0 && (
         <div className="empty-state">No administrative actions recorded yet.</div>
       )}
@@ -305,12 +321,15 @@ function RetentionPolicySection() {
   const [policy, setPolicy] = useState<RetentionPolicyRow | null>(null);
   const [days, setDays] = useState("");
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    apiGetJson<RetentionPolicyRow>("/api/v1/identity/retention-policy").then((p) => {
-      setPolicy(p);
-      setDays(String(p.duration_days));
-    });
+    apiGetJson<RetentionPolicyRow>("/api/v1/identity/retention-policy")
+      .then((p) => {
+        setPolicy(p);
+        setDays(String(p.duration_days));
+      })
+      .catch(() => setError("Failed to load the retention policy."));
   }, []);
 
   async function onSave(e: FormEvent) {
@@ -329,9 +348,14 @@ function RetentionPolicySection() {
   return (
     <div className="card">
       <div className="card-title">Retention Policy</div>
-      {policy === null ? (
+      {error && (
+        <p role="alert" style={{ color: "var(--status-critical)" }}>
+          {error}
+        </p>
+      )}
+      {policy === null && !error ? (
         <p>Loading…</p>
-      ) : (
+      ) : policy ? (
         <form onSubmit={onSave} aria-label="Retention policy" style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
           <div>
             <label htmlFor="retention-days">Retention (days)</label>
@@ -348,7 +372,7 @@ function RetentionPolicySection() {
           <button type="submit">Save</button>
           {saved && <span style={{ color: "var(--status-good)" }}>Saved</span>}
         </form>
-      )}
+      ) : null}
     </div>
   );
 }
