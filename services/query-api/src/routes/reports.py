@@ -17,9 +17,9 @@ from pydantic import BaseModel
 from starlette.responses import PlainTextResponse
 
 from shared.api.envelope import EmptyReason, Envelope
+from shared.authz import Principal, require_site_scope
 
 from .. import db
-from ..auth import require_authenticated
 from ..flow_query import FlowFilter, is_outside_retention, query_flows
 
 router = APIRouter(tags=["query"])
@@ -53,8 +53,11 @@ def _to_report_response(row) -> ReportResponse:
 
 @router.post("/reports", response_model=ReportResponse, status_code=status.HTTP_201_CREATED)
 async def create_report(
-    body: ReportCreateRequest, auth: str = Depends(require_authenticated)
+    body: ReportCreateRequest, principal: Principal = Depends(require_site_scope)
 ) -> ReportResponse:
+    if body.site_id is not None and not principal.is_allowed(body.site_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "site outside your access scope")
+
     flt = FlowFilter(
         start=body.start,
         end=body.end,
@@ -63,9 +66,6 @@ async def create_report(
         application=body.application,
         host=body.host,
     )
-    # v1 has no per-user identity threading into query-api yet (US3's shared authz
-    # dependency, tasks.md T078); reports are owned by a placeholder until then.
-    owner_user_id = "00000000-0000-0000-0000-000000000000"
 
     pool = await db.get_pool()
     async with pool.acquire() as conn:
@@ -75,7 +75,7 @@ async def create_report(
             VALUES ($1::uuid, $2::jsonb, $3)
             RETURNING id, name, filter_definition, created_at
             """,
-            owner_user_id,
+            principal.user_id,
             json.dumps(flt.to_dict()),
             body.name,
         )
@@ -96,10 +96,14 @@ async def _load_filter(report_id: str) -> FlowFilter:
 
 @router.get("/reports/{report_id}")
 async def get_report(
-    report_id: str, auth: str = Depends(require_authenticated)
+    report_id: str, principal: Principal = Depends(require_site_scope)
 ) -> Envelope[list[dict]]:
     flt = await _load_filter(report_id)
-    data = await query_flows(flt)
+    if flt.site_id is not None and not principal.is_allowed(flt.site_id):
+        return Envelope.of([], empty=True, reason=EmptyReason.NO_TRAFFIC)
+
+    allowed = None if principal.all_sites else principal.site_ids
+    data = await query_flows(flt, allowed_site_ids=allowed)
 
     if not data:
         reason = (
@@ -115,13 +119,17 @@ async def get_report(
 async def export_report(
     report_id: str,
     format: str = Query("csv"),
-    auth: str = Depends(require_authenticated),
+    principal: Principal = Depends(require_site_scope),
 ) -> PlainTextResponse:
     if format != "csv":
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "only format=csv is supported")
 
     flt = await _load_filter(report_id)
-    data = await query_flows(flt)
+    if flt.site_id is not None and not principal.is_allowed(flt.site_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "site outside your access scope")
+
+    allowed = None if principal.all_sites else principal.site_ids
+    data = await query_flows(flt, allowed_site_ids=allowed)
 
     buffer = io.StringIO()
     columns = [

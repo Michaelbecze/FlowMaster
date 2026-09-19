@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel
 
 from ..config import get_settings
-from ..db import get_pool
+from .. import db
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -46,7 +46,7 @@ class LoginResponse(BaseModel):
 
 @router.post("/login", response_model=LoginResponse)
 async def login(body: LoginRequest) -> LoginResponse:
-    pool = await get_pool()
+    pool = await db.get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT id, password_hash, status FROM app_user WHERE email = $1", body.email
@@ -71,7 +71,7 @@ async def login(body: LoginRequest) -> LoginResponse:
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(authorization: str = Header(...)) -> None:
     token = _bearer_token(authorization)
-    pool = await get_pool()
+    pool = await db.get_pool()
     async with pool.acquire() as conn:
         await conn.execute(
             "UPDATE session SET revoked_at = now() WHERE token_hash = $1", _hash_token(token)
@@ -87,14 +87,38 @@ def _bearer_token(authorization: str) -> str:
 class AuthenticatedUser(BaseModel):
     user_id: str
     email: str
+    all_sites: bool = False
+    site_ids: list[str] = []
+
+    def is_allowed(self, site_id: str) -> bool:
+        return self.all_sites or site_id in self.site_ids
+
+    def filter_sites(self, requested: list[str]) -> list[str]:
+        """Never trusts a client-supplied site filter as authorization
+        (contracts/query-api.md) — intersects it with the caller's actual scope."""
+        if self.all_sites:
+            return requested
+        return [s for s in requested if s in self.site_ids]
+
+
+async def _load_site_scope(conn, user_id) -> tuple[bool, list[str]]:
+    rows = await conn.fetch(
+        "SELECT site_id FROM user_role_assignment WHERE user_id = $1", user_id
+    )
+    if any(r["site_id"] is None for r in rows):
+        return True, []
+    return False, [str(r["site_id"]) for r in rows]
 
 
 async def get_current_user(authorization: str = Header(...)) -> AuthenticatedUser:
     """Shared dependency: validates a session token (interactive login) or an API token
     (machine-client access, FR-019) on every request, not just at login, so a revoked
-    user's very next request is denied (User Story 3, Acceptance Scenario 3)."""
+    user's very next request is denied (User Story 3, Acceptance Scenario 3). Also
+    resolves the caller's site scope in the same round trip, so GET /auth/whoami is
+    the single call packages/shared/src/shared/authz.py needs (FR-009's single point
+    of truth for the site-scope claim)."""
     token = _bearer_token(authorization)
-    pool = await get_pool()
+    pool = await db.get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
@@ -119,7 +143,11 @@ async def get_current_user(authorization: str = Header(...)) -> AuthenticatedUse
             )
         if row is None or row["status"] != "active":
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired credentials")
-        return AuthenticatedUser(user_id=str(row["user_id"]), email=row["email"])
+
+        all_sites, site_ids = await _load_site_scope(conn, row["user_id"])
+        return AuthenticatedUser(
+            user_id=str(row["user_id"]), email=row["email"], all_sites=all_sites, site_ids=site_ids
+        )
 
 
 async def require_user(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:

@@ -57,13 +57,22 @@ class FlowFilter:
         )
 
 
-async def query_flows(flt: FlowFilter, page: int = 1) -> list[dict]:
+async def query_flows(
+    flt: FlowFilter, page: int = 1, allowed_site_ids: list[str] | None = None
+) -> list[dict]:
+    """allowed_site_ids, when not None, restricts results to the caller's site scope
+    (FR-009) even when flt.site_id is unset — the server-side enforcement callers get
+    by resolving a Principal via shared.authz and passing principal.site_ids here when
+    principal.all_sites is False."""
     conditions = ["timestamp >= {start:DateTime64}", "timestamp <= {end:DateTime64}"]
     params: dict[str, object] = {"start": flt.start, "end": flt.end}
 
     if flt.site_id:
         conditions.append("site_id = {site_id:String}")
         params["site_id"] = flt.site_id
+    elif allowed_site_ids is not None:
+        conditions.append("site_id IN {allowed_site_ids:Array(String)}")
+        params["allowed_site_ids"] = allowed_site_ids
     if flt.protocol is not None:
         conditions.append("protocol = {protocol:UInt8}")
         params["protocol"] = flt.protocol

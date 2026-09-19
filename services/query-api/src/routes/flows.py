@@ -9,8 +9,8 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Query
 
 from shared.api.envelope import EmptyReason, Envelope
+from shared.authz import Principal, require_site_scope
 
-from ..auth import require_authenticated
 from ..flow_query import FlowFilter, is_outside_retention, query_flows
 
 router = APIRouter(tags=["query"])
@@ -25,12 +25,19 @@ async def get_flows(
     application: str | None = Query(None),
     host: str | None = Query(None),
     page: int = Query(1, ge=1),
-    _auth: str = Depends(require_authenticated),
+    principal: Principal = Depends(require_site_scope),
 ) -> Envelope[list[dict]]:
+    # A requested site outside the caller's scope yields an empty result, not a 403 —
+    # consistent with the realtime channel's silent-drop rule (never confirm a site's
+    # existence to a caller who isn't scoped to it).
+    if site_id is not None and not principal.is_allowed(site_id):
+        return Envelope.of([], empty=True, reason=EmptyReason.NO_TRAFFIC)
+
     flt = FlowFilter(
         start=start, end=end, site_id=site_id, protocol=protocol, application=application, host=host
     )
-    data = await query_flows(flt, page=page)
+    allowed = None if principal.all_sites else principal.site_ids
+    data = await query_flows(flt, page=page, allowed_site_ids=allowed)
 
     if not data:
         reason = (

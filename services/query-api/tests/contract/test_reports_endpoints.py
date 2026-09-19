@@ -10,7 +10,9 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
+from fastapi import Header, HTTPException, status
 from fastapi.testclient import TestClient
+from shared.authz import Principal, require_site_scope
 
 import src.clickhouse as clickhouse_module
 import src.db as db_module
@@ -18,6 +20,22 @@ import src.retention_client as retention_client_module
 from src.main import app
 
 AUTH_HEADERS = {"Authorization": "Bearer test-token"}
+
+
+async def _fake_require_site_scope(authorization: str | None = Header(None)) -> Principal:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing bearer token")
+    return Principal(user_id="user-1", email="test@example.com", all_sites=True, site_ids=[])
+
+
+@pytest.fixture(autouse=True)
+def override_site_scope():
+    # See test_query_endpoints.py's override_site_scope fixture for why this must be
+    # scoped to the test rather than a bare module-level assignment.
+    app.dependency_overrides[require_site_scope] = _fake_require_site_scope
+    yield
+    app.dependency_overrides.pop(require_site_scope, None)
+
 
 _FLOW_ROW = (
     "2026-09-19T18:00:00",

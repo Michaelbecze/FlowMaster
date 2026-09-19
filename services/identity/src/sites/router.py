@@ -10,8 +10,9 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from ..audit.logger import write_audit_log
 from ..auth.session import AuthenticatedUser, require_user
-from ..db import get_pool
+from .. import db
 
 router = APIRouter(prefix="/sites", tags=["sites"])
 
@@ -46,7 +47,7 @@ def _to_site_response(row) -> SiteResponse:
 
 @router.get("", response_model=list[SiteResponse])
 async def list_sites(user: AuthenticatedUser = Depends(require_user)) -> list[SiteResponse]:
-    pool = await get_pool()
+    pool = await db.get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             "SELECT id, name, network_identity, status, last_seen_at, created_at FROM site"
@@ -58,7 +59,7 @@ async def list_sites(user: AuthenticatedUser = Depends(require_user)) -> list[Si
 async def create_site(
     body: SiteCreateRequest, user: AuthenticatedUser = Depends(require_user)
 ) -> SiteResponse:
-    pool = await get_pool()
+    pool = await db.get_pool()
     async with pool.acquire() as conn:
         org_id = await _organization_id(conn)
         try:
@@ -78,7 +79,31 @@ async def create_site(
                 status.HTTP_409_CONFLICT,
                 f"a site with network_identity '{body.network_identity}' already exists",
             ) from exc
+        await write_audit_log(
+            conn,
+            actor_user_id=user.user_id,
+            action="site.created",
+            target=str(row["id"]),
+            detail={"name": body.name, "network_identity": body.network_identity},
+        )
     return _to_site_response(row)
+
+
+@router.delete("/{site_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_site(site_id: str, user: AuthenticatedUser = Depends(require_user)) -> None:
+    """Removes the Site row (cascading its UserRoleAssignment scopes via the FK).
+    Historical flow data already written to ClickHouse under this site_id is left
+    intact — deleting a site is an onboarding/scope action, not a retroactive data
+    purge (Edge Cases: referenced-entity cleanup means the *reference* is cleaned up,
+    not the analytics history it pointed at)."""
+    pool = await db.get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute("DELETE FROM site WHERE id = $1", site_id)
+        if result == "DELETE 0":
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
+        await write_audit_log(
+            conn, actor_user_id=user.user_id, action="site.deleted", target=site_id
+        )
 
 
 class SiteSeenRequest(BaseModel):
@@ -96,7 +121,7 @@ internal_router = APIRouter(prefix="/internal/sites", tags=["sites-internal"])
 @internal_router.get("/by-network-identity/{network_identity}")
 async def resolve_site_by_network_identity(network_identity: str) -> dict[str, str | None]:
     """Used by Ingestion's attribution step (services/ingestion/src/attribution.py)."""
-    pool = await get_pool()
+    pool = await db.get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT id FROM site WHERE network_identity = $1", network_identity
@@ -107,7 +132,7 @@ async def resolve_site_by_network_identity(network_identity: str) -> dict[str, s
 @internal_router.post("/{site_id}/seen", status_code=204)
 async def mark_site_seen(site_id: str, body: SiteSeenRequest) -> None:
     """Used by the Realtime staleness tracker (services/realtime/src/staleness.py)."""
-    pool = await get_pool()
+    pool = await db.get_pool()
     async with pool.acquire() as conn:
         await conn.execute(
             "UPDATE site SET status = 'active', last_seen_at = $2 WHERE id = $1",
@@ -124,7 +149,7 @@ class SiteStatusRequest(BaseModel):
 async def set_site_status(site_id: str, body: SiteStatusRequest) -> None:
     """Used by the Realtime staleness tracker to flip a silent site to 'stale'
     (FR-004) without Realtime writing to identity's database directly."""
-    pool = await get_pool()
+    pool = await db.get_pool()
     async with pool.acquire() as conn:
         await conn.execute("UPDATE site SET status = $2 WHERE id = $1", site_id, body.status)
 
@@ -133,7 +158,7 @@ async def set_site_status(site_id: str, body: SiteStatusRequest) -> None:
 async def list_sites_internal() -> list[dict]:
     """Used by Realtime's staleness sweep to enumerate known sites without a session
     token (service-to-service call on the private network)."""
-    pool = await get_pool()
+    pool = await db.get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch("SELECT id, status, last_seen_at FROM site")
     return [

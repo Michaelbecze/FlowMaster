@@ -171,23 +171,23 @@ without code changes.
 
 ### Tests for User Story 3
 
-- [ ] T067 [P] [US3] Contract test for `GET/POST /users`, `PATCH /users/{id}/roles`, `PATCH /users/{id}/status` in `services/identity/tests/contract/test_users_endpoints.py`
-- [ ] T068 [P] [US3] Contract test for `GET/POST /sites`, `DELETE /sites/{id}`, `GET /audit-log`, `GET/PATCH /retention-policy` in `services/identity/tests/contract/test_admin_endpoints.py`
-- [ ] T069 [P] [US3] Access-control test confirming a user scoped to one site cannot read another site's data via `/summary`, `/flows`, `/reports`, or `/realtime` (FR-009) in `services/query-api/tests/test_site_scope_enforcement.py`
-- [ ] T070 [US3] Integration test automating `quickstart.md` Scenario 3 (scoped user cannot see a second site's data; revocation takes effect on the very next request without a restart) in `services/identity/tests/integration/test_scenario_access_control.py`
+- [X] T067 [P] [US3] Contract test for `GET/POST /users`, `PATCH /users/{id}/roles`, `PATCH /users/{id}/status` in `services/identity/tests/contract/test_users_endpoints.py`
+- [X] T068 [P] [US3] Contract test for `GET/POST /sites`, `DELETE /sites/{id}`, `GET /audit-log`, `GET/PATCH /retention-policy` in `services/identity/tests/contract/test_admin_endpoints.py`
+- [X] T069 [P] [US3] Access-control test confirming a user scoped to one site cannot read another site's data via `/summary`, `/flows`, `/reports`, or `/realtime` (FR-009) in `services/query-api/tests/test_site_scope_enforcement.py`
+- [X] T070 [US3] Integration test automating `quickstart.md` Scenario 3 (scoped user cannot see a second site's data; revocation takes effect on the very next request without a restart) in `services/identity/tests/integration/test_scenario_access_control.py`
 
 ### Implementation for User Story 3
 
-- [ ] T071 [P] [US3] Write the PostgreSQL migration for `AuditLogEntry` (`id` UUID PK, `actor_user_id` FK, `action`, `target`, `occurred_at`, `detail` JSONB) in `services/identity/migrations/0007_audit_log_entry.sql`
-- [ ] T072 [US3] Implement `GET/POST /users` (list/invite users) in `services/identity/src/users/router.py`
-- [ ] T073 [US3] Implement `PATCH /users/{id}/roles` (assign role(s) + site scope via `UserRoleAssignment`) in `services/identity/src/users/router.py`, enforcing FR-008/FR-009 (depends on T018, T072)
-- [ ] T074 [US3] Implement `PATCH /users/{id}/status` (disable/re-enable; revocation takes effect on the user's very next request without a restart) in `services/identity/src/users/router.py` (depends on T020, T072)
-- [ ] T075 [US3] Extend `GET/POST /sites` (full admin onboarding flow) and `DELETE /sites/{id}` (with referenced-entity cleanup per Edge Cases) in `services/identity/src/sites/router.py` (depends on T022)
-- [ ] T076 [US3] Implement audit-log writing on every mutating Identity endpoint and `GET /audit-log` in `services/identity/src/audit/logger.py` and `services/identity/src/audit/router.py` (depends on T071, T072, T073, T074, T075)
-- [ ] T077 [US3] Implement `GET/PATCH /retention-policy` in `services/identity/src/retention/router.py`, feeding the ClickHouse TTL from T019 (depends on T014, T019)
-- [ ] T078 [US3] Implement a shared server-side site-scope authorization dependency (never trusting a client-supplied site filter) in `packages/shared/src/shared/authz.py`, applied to `query-api` and `alerting` (depends on T018)
-- [ ] T079 [P] [US3] Implement the Admin page (user invitation/role/scope management, site onboarding form, audit-log view, retention-policy settings) in `frontend/src/pages/Admin.tsx`
-- [ ] T080 [US3] Add explicit empty states, keyboard navigation, and screen-reader support to the Admin page per FR-016/FR-018 in `frontend/src/pages/Admin.tsx`
+- [X] T071 [P] [US3] Write the PostgreSQL migration for `AuditLogEntry` (`id` UUID PK, `actor_user_id` FK, `action`, `target`, `occurred_at`, `detail` JSONB) in `services/identity/migrations/0007_audit_log_entry.sql`
+- [X] T072 [US3] Implement `GET/POST /users` (list/invite users) in `services/identity/src/users/router.py`
+- [X] T073 [US3] Implement `PATCH /users/{id}/roles` (assign role(s) + site scope via `UserRoleAssignment`) in `services/identity/src/users/router.py`, enforcing FR-008/FR-009 (depends on T018, T072)
+- [X] T074 [US3] Implement `PATCH /users/{id}/status` (disable/re-enable; revocation takes effect on the user's very next request without a restart) in `services/identity/src/users/router.py` (depends on T020, T072)
+- [X] T075 [US3] Extend `GET/POST /sites` (full admin onboarding flow) and `DELETE /sites/{id}` (with referenced-entity cleanup per Edge Cases) in `services/identity/src/sites/router.py` (depends on T022)
+- [X] T076 [US3] Implement audit-log writing on every mutating Identity endpoint and `GET /audit-log` in `services/identity/src/audit/logger.py` and `services/identity/src/audit/router.py` (depends on T071, T072, T073, T074, T075)
+- [X] T077 [US3] Implement `GET/PATCH /retention-policy` in `services/identity/src/retention/router.py`, feeding the ClickHouse TTL from T019 (depends on T014, T019)
+- [X] T078 [US3] Implement a shared server-side site-scope authorization dependency (never trusting a client-supplied site filter) in `packages/shared/src/shared/authz.py`, applied to `query-api` and `alerting` (depends on T018)
+- [X] T079 [P] [US3] Implement the Admin page (user invitation/role/scope management, site onboarding form, audit-log view, retention-policy settings) in `frontend/src/pages/Admin.tsx`
+- [X] T080 [US3] Add explicit empty states, keyboard navigation, and screen-reader support to the Admin page per FR-016/FR-018 in `frontend/src/pages/Admin.tsx`
 
 **Checkpoint**: User Stories 1, 2, AND 3 all work independently
 

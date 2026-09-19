@@ -5,9 +5,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 
 from shared.api.envelope import EmptyReason, Envelope
+from shared.authz import Principal, require_site_scope
 
 from .. import clickhouse
-from ..auth import require_authenticated
 from .summary import _parse_range
 
 router = APIRouter(tags=["query"])
@@ -18,10 +18,10 @@ async def get_top_talkers(
     range: str = Query("1h"),
     sites: str = Query(...),
     limit: int = Query(10, ge=1, le=100),
-    _auth: str = Depends(require_authenticated),
+    principal: Principal = Depends(require_site_scope),
 ) -> Envelope[list[dict]]:
     hours = _parse_range(range)
-    site_ids = [s for s in sites.split(",") if s]
+    site_ids = principal.filter_sites([s for s in sites.split(",") if s])
 
     client = await clickhouse.get_client()
     rows = await client.query(

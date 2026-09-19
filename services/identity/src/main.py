@@ -10,12 +10,15 @@ from fastapi import FastAPI
 
 from shared.logging import configure_logging
 
+from .audit.router import router as audit_router
 from .auth.api_tokens import router as api_tokens_router
 from .auth.session import router as session_router
 from .db import close_pool
 from .retention.internal_router import internal_router as retention_internal_router
+from .retention.router import router as retention_router
 from .sites.router import internal_router as sites_internal_router
 from .sites.router import router as sites_router
+from .users.router import router as users_router
 
 configure_logging("identity")
 
@@ -25,6 +28,9 @@ app.include_router(api_tokens_router)
 app.include_router(sites_router)
 app.include_router(sites_internal_router)
 app.include_router(retention_internal_router)
+app.include_router(retention_router)
+app.include_router(users_router)
+app.include_router(audit_router)
 
 
 @app.on_event("shutdown")

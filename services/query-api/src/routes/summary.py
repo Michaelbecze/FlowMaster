@@ -6,9 +6,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from shared.api.envelope import EmptyReason, Envelope, SiteStatus
+from shared.authz import Principal, require_site_scope
 
 from .. import clickhouse
-from ..auth import require_authenticated
 from ..sites_client import list_site_statuses
 
 router = APIRouter(tags=["query"])
@@ -29,10 +29,12 @@ def _parse_range(range_: str) -> int:
 async def get_summary(
     range: str = Query("1h"),
     sites: str = Query(..., description="Comma-separated site ids"),
-    _auth: str = Depends(require_authenticated),
+    principal: Principal = Depends(require_site_scope),
 ) -> Envelope[dict]:
     hours = _parse_range(range)
-    site_ids = [s for s in sites.split(",") if s]
+    # Never trusts the client-supplied site filter as authorization (contracts/query-api.md):
+    # intersected with the caller's actual scope before it ever reaches a ClickHouse query.
+    site_ids = principal.filter_sites([s for s in sites.split(",") if s])
 
     client = await clickhouse.get_client()
     totals = await client.query(

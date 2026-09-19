@@ -10,7 +10,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from ..db import get_pool
+from .. import db
 from .session import AuthenticatedUser, require_user
 
 router = APIRouter(prefix="/auth/tokens", tags=["auth"])
@@ -31,7 +31,7 @@ async def issue_token(user: AuthenticatedUser = Depends(require_user)) -> ApiTok
     """Scoped to the caller's own permissions — an API token can never grant more access
     than the issuing user already has (contracts/identity-api.md)."""
     token = f"fmat_{secrets.token_urlsafe(32)}"
-    pool = await get_pool()
+    pool = await db.get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             "INSERT INTO api_token (token_hash, user_id) VALUES ($1, $2) "
@@ -44,7 +44,7 @@ async def issue_token(user: AuthenticatedUser = Depends(require_user)) -> ApiTok
 
 @router.delete("/{token_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_token(token_id: str, user: AuthenticatedUser = Depends(require_user)) -> None:
-    pool = await get_pool()
+    pool = await db.get_pool()
     async with pool.acquire() as conn:
         result = await conn.execute(
             "UPDATE api_token SET revoked_at = now() "

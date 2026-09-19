@@ -1,9 +1,11 @@
 """Contract tests for GET /summary, /top-talkers, /sites/status, /flows: asserts the
 empty/reason and site_status response conventions from contracts/query-api.md.
 
-Uses a fake ClickHouse client (protocol-compatible .query() call) so this runs without
-Testcontainers; SQL-correctness against a real ClickHouse belongs in a
-Testcontainers-backed CI job per the constitution's Testing Standards.
+Uses a fake ClickHouse client (protocol-compatible .query() call) and a FastAPI
+dependency override for shared.authz.require_site_scope (real behavior calls out to
+identity over HTTP) so this runs without Testcontainers or a live identity service;
+SQL-correctness against a real ClickHouse belongs in a Testcontainers-backed CI job
+per the constitution's Testing Standards.
 """
 
 from __future__ import annotations
@@ -11,13 +13,34 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pytest
+from fastapi import Header, HTTPException, status
 from fastapi.testclient import TestClient
+from shared.authz import Principal, require_site_scope
 
 import src.clickhouse as clickhouse_module
 import src.sites_client as sites_client_module
 from src.main import app
 
 AUTH_HEADERS = {"Authorization": "Bearer test-token"}
+
+
+async def _fake_require_site_scope(authorization: str | None = Header(None)) -> Principal:
+    """Exercises the same "missing bearer token -> 401" behavior as the real
+    dependency, without the real dependency's network call to identity."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing bearer token")
+    return Principal(user_id="user-1", email="test@example.com", all_sites=True, site_ids=[])
+
+
+@pytest.fixture(autouse=True)
+def override_site_scope():
+    # app is a module-level singleton shared across every test file in this session;
+    # scope the override to this test's lifetime rather than mutating it globally,
+    # or a sibling test file's override (e.g. a scoped, non-all_sites Principal) would
+    # leak into these tests depending on import/collection order.
+    app.dependency_overrides[require_site_scope] = _fake_require_site_scope
+    yield
+    app.dependency_overrides.pop(require_site_scope, None)
 
 
 @dataclass

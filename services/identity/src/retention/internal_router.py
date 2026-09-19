@@ -11,14 +11,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from ..db import get_pool
+from .. import db
 
 internal_router = APIRouter(prefix="/internal/retention-policy", tags=["retention-internal"])
 
 
 @internal_router.get("")
 async def get_retention_policy_internal() -> dict[str, int]:
-    pool = await get_pool()
+    pool = await db.get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow("SELECT duration_days FROM retention_policy LIMIT 1")
     return {"duration_days": row["duration_days"] if row else 1}
