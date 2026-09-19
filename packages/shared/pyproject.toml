@@ -1,0 +1,11 @@
+[project]
+name = "flowmaster-shared"
+version = "0.1.0"
+description = "Cross-service event and contract types for the FlowMaster enterprise platform"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.6",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

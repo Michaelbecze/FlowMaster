@@ -5,3 +5,19 @@ __pycache__/
 *.db-shm
 *.db-wal
 .env
+.env.*
+.venv/
+*.egg-info/
+
+# Frontend (Node/Vite)
+node_modules/
+dist/
+build/
+*.log
+playwright-report/
+test-results/
+
+# Editors/OS
+.vscode/
+.idea/
+.DS_Store

@@ -1,0 +1,207 @@
+name: flowmaster
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: flowmaster
+      POSTGRES_PASSWORD: flowmaster
+      POSTGRES_DB: flowmaster
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flowmaster"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8-alpine
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Kafka-API-compatible event stream backbone (research.md #4). Single-broker dev topology;
+  # flow-records.v1 is created by infra/kafka-topics-init.sh on first boot.
+  broker:
+    image: redpandadata/redpanda:v24.2.4
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --memory=512M
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://broker:9092
+    ports:
+      - "9092:9092"
+    volumes:
+      - broker-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  topics-init:
+    image: redpandadata/redpanda:v24.2.4
+    depends_on:
+      broker:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/init/kafka-topics-init.sh"]
+    volumes:
+      - ./kafka-topics-init.sh:/init/kafka-topics-init.sh:ro
+
+  identity:
+    build:
+      context: ..
+      dockerfile: services/identity/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://flowmaster:flowmaster@postgres:5432/flowmaster
+      SESSION_SECRET: dev-only-change-me
+      PORT: "8001"
+    ports: ["8001:8001"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ingestion:
+    build:
+      context: ..
+      dockerfile: services/ingestion/Dockerfile
+    environment:
+      NETFLOW_HOST: "0.0.0.0"
+      NETFLOW_PORT: "2055"
+      KAFKA_BROKERS: broker:9092
+      IDENTITY_BASE_URL: http://identity:8001
+      PORT: "8002"
+    ports:
+      - "2055:2055/udp"
+      - "8002:8002"
+    depends_on:
+      topics-init:
+        condition: service_completed_successfully
+      identity:
+        condition: service_started
+
+  flow-writer:
+    build:
+      context: ..
+      dockerfile: services/flow-writer/Dockerfile
+    environment:
+      KAFKA_BROKERS: broker:9092
+      CLICKHOUSE_URL: http://clickhouse:8123
+      DATABASE_URL: postgresql://flowmaster:flowmaster@postgres:5432/flowmaster
+      PORT: "8003"
+    ports: ["8003:8003"]
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      topics-init:
+        condition: service_completed_successfully
+
+  realtime:
+    build:
+      context: ..
+      dockerfile: services/realtime/Dockerfile
+    environment:
+      KAFKA_BROKERS: broker:9092
+      REDIS_URL: redis://redis:6379/0
+      IDENTITY_BASE_URL: http://identity:8001
+      PORT: "8004"
+    ports: ["8004:8004"]
+    depends_on:
+      redis:
+        condition: service_healthy
+      topics-init:
+        condition: service_completed_successfully
+      identity:
+        condition: service_started
+
+  query-api:
+    build:
+      context: ..
+      dockerfile: services/query-api/Dockerfile
+    environment:
+      CLICKHOUSE_URL: http://clickhouse:8123
+      DATABASE_URL: postgresql://flowmaster:flowmaster@postgres:5432/flowmaster
+      PORT: "8005"
+    ports: ["8005:8005"]
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  alerting:
+    build:
+      context: ..
+      dockerfile: services/alerting/Dockerfile
+    environment:
+      KAFKA_BROKERS: broker:9092
+      DATABASE_URL: postgresql://flowmaster:flowmaster@postgres:5432/flowmaster
+      REDIS_URL: redis://redis:6379/0
+      PORT: "8006"
+    ports: ["8006:8006"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      topics-init:
+        condition: service_completed_successfully
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: gateway/Dockerfile
+    environment:
+      IDENTITY_BASE_URL: http://identity:8001
+      QUERY_API_BASE_URL: http://query-api:8005
+      ALERTING_BASE_URL: http://alerting:8006
+      REALTIME_BASE_URL: http://realtime:8004
+      REDIS_URL: redis://redis:6379/0
+      PORT: "8080"
+    ports: ["8080:8080"]
+    depends_on:
+      - identity
+      - query-api
+      - alerting
+      - realtime
+
+  frontend:
+    build: ../frontend
+    environment:
+      VITE_GATEWAY_URL: http://localhost:8080
+    ports: ["5173:5173"]
+    depends_on:
+      - gateway
+
+volumes:
+  postgres-data:
+  clickhouse-data:
+  redis-data:
+  broker-data:
