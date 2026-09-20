@@ -6,17 +6,7 @@ import { SiteSelector } from "../components/SiteSelector";
 import { TrafficBucket, TrafficChart } from "../components/TrafficChart";
 import { apiGetJson } from "../services/api";
 import { useRealtimeStats } from "../services/realtime";
-
-const SERIES_COLORS = [
-  "var(--series-1)",
-  "var(--series-2)",
-  "var(--series-3)",
-  "var(--series-4)",
-  "var(--series-5)",
-  "var(--series-6)",
-  "var(--series-7)",
-  "var(--series-8)",
-];
+import { CHART_SERIES_COLORS, CHART_TEXT_SECONDARY } from "../styles/chartColors";
 
 const RANGE_OPTIONS = ["1h", "3h", "6h", "12h", "24h"] as const;
 type Range = (typeof RANGE_OPTIONS)[number];
@@ -139,15 +129,18 @@ export function Dashboard() {
     const breakdown = summary?.data.application_breakdown ?? [];
     return {
       tooltip: { trigger: "item", valueFormatter: (v: number) => formatBytes(v) },
-      legend: { show: true, bottom: 0, textStyle: { color: "var(--text-secondary)" } },
+      legend: { show: true, bottom: 0, textStyle: { color: CHART_TEXT_SECONDARY } },
       series: [
         {
           type: "pie",
-          radius: ["55%", "80%"],
+          radius: ["45%", "70%"],
+          avoidLabelOverlap: true,
+          label: { color: CHART_TEXT_SECONDARY, fontSize: 11 },
+          labelLine: { length: 12, length2: 10 },
           data: breakdown.map((b, i) => ({
             name: b.application,
             value: b.bytes,
-            itemStyle: { color: SERIES_COLORS[i % SERIES_COLORS.length] },
+            itemStyle: { color: CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length] },
           })),
         },
       ],
@@ -165,7 +158,7 @@ export function Dashboard() {
         {
           type: "bar",
           data: rows.map((r) => r.total_bytes).reverse(),
-          itemStyle: { color: "var(--series-1)", borderRadius: [0, 4, 4, 0] },
+          itemStyle: { color: CHART_SERIES_COLORS[0], borderRadius: [0, 4, 4, 0] },
         },
       ],
     };
@@ -287,7 +280,7 @@ export function Dashboard() {
           {summary?.empty ? (
             <div className="empty-state">No traffic in this window.</div>
           ) : (
-            <ReactECharts option={protocolOption} style={{ height: 260 }} />
+            <ReactECharts option={protocolOption} style={{ height: 380 }} />
           )}
         </div>
         <div className="card">

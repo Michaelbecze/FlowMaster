@@ -1,6 +1,6 @@
 """Minimal Site create/list — unblocks Ingestion attribution (FR-001) and User Story 1's
 independent test before the full admin onboarding flow (User Story 3) lands.
-GET/POST /sites."""
+GET/POST/PATCH/DELETE /sites."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from datetime import datetime
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..audit.logger import write_audit_log
 from ..auth.session import AuthenticatedUser, require_user
@@ -20,6 +20,10 @@ router = APIRouter(prefix="/sites", tags=["sites"])
 class SiteCreateRequest(BaseModel):
     name: str
     network_identity: str
+
+
+class SiteUpdateRequest(BaseModel):
+    name: str = Field(min_length=1)
 
 
 class SiteResponse(BaseModel):
@@ -85,6 +89,35 @@ async def create_site(
             action="site.created",
             target=str(row["id"]),
             detail={"name": body.name, "network_identity": body.network_identity},
+        )
+    return _to_site_response(row)
+
+
+@router.patch("/{site_id}", response_model=SiteResponse)
+async def rename_site(
+    site_id: str, body: SiteUpdateRequest, user: AuthenticatedUser = Depends(require_user)
+) -> SiteResponse:
+    """Renames a site (the exporter identity/network_identity is not editable here —
+    that's what Ingestion attributes flows by, so changing it is a re-onboard, not a
+    rename)."""
+    pool = await db.get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE site SET name = $2 WHERE id = $1
+            RETURNING id, name, network_identity, status, last_seen_at, created_at
+            """,
+            site_id,
+            body.name,
+        )
+        if row is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
+        await write_audit_log(
+            conn,
+            actor_user_id=user.user_id,
+            action="site.renamed",
+            target=site_id,
+            detail={"name": body.name},
         )
     return _to_site_response(row)
 

@@ -1,5 +1,6 @@
 import ReactECharts from "echarts-for-react";
 import { useMemo } from "react";
+import { CHART_SERIES_COLORS } from "../styles/chartColors";
 
 export interface TrafficBucket {
   bucket: string;
@@ -44,9 +45,9 @@ export function TrafficChart({
           data: data.map((d) => d.total_bytes),
           smooth: true,
           symbolSize: 7,
-          lineStyle: { color: "var(--series-1)", width: 2 },
-          itemStyle: { color: "var(--series-1)" },
-          areaStyle: { color: "var(--series-1)", opacity: 0.12 },
+          lineStyle: { color: CHART_SERIES_COLORS[0], width: 2 },
+          itemStyle: { color: CHART_SERIES_COLORS[0] },
+          areaStyle: { color: CHART_SERIES_COLORS[0], opacity: 0.12 },
         },
       ],
     }),

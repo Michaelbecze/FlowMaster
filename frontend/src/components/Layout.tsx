@@ -1,4 +1,5 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { ErrorBoundary } from "./ErrorBoundary";
 
 const NAV_ITEMS = [
   { to: "/dashboard", label: "Dashboard" },
@@ -8,6 +9,7 @@ const NAV_ITEMS = [
 ];
 
 export function Layout() {
+  const location = useLocation();
   return (
     <div className="app-shell">
       <nav className="app-nav" aria-label="Primary">
@@ -39,7 +41,9 @@ export function Layout() {
         ))}
       </nav>
       <main className="app-main">
-        <Outlet />
+        <ErrorBoundary key={location.pathname}>
+          <Outlet />
+        </ErrorBoundary>
       </main>
     </div>
   );

@@ -1,4 +1,4 @@
-"""Contract tests for GET/POST /sites, DELETE /sites/{id}, GET /audit-log,
+"""Contract tests for GET/POST/PATCH/DELETE /sites, GET /audit-log,
 GET/PATCH /retention-policy (User Story 3, FR-005/FR-010/FR-011)."""
 
 from __future__ import annotations
@@ -76,6 +76,48 @@ class TestSitesEndpoints:
         resp = client.delete("/sites/does-not-exist", headers=auth_headers)
 
         assert resp.status_code == 404
+
+    def test_renaming_a_site_updates_it_and_leaves_network_identity_alone(self, client, auth_headers) -> None:
+        create_resp = client.post(
+            "/sites", json={"name": "unnamed-branch", "network_identity": "203.0.113.70"}, headers=auth_headers
+        )
+        site_id = create_resp.json()["id"]
+
+        rename_resp = client.patch(f"/sites/{site_id}", json={"name": "Chicago Branch"}, headers=auth_headers)
+
+        assert rename_resp.status_code == 200
+        assert rename_resp.json()["name"] == "Chicago Branch"
+        assert rename_resp.json()["network_identity"] == "203.0.113.70"
+
+        list_resp = client.get("/sites", headers=auth_headers)
+        assert any(s["id"] == site_id and s["name"] == "Chicago Branch" for s in list_resp.json())
+
+    def test_renaming_unknown_site_is_404(self, client, auth_headers) -> None:
+        resp = client.patch("/sites/does-not-exist", json={"name": "x"}, headers=auth_headers)
+
+        assert resp.status_code == 404
+
+    def test_renaming_to_an_empty_name_is_rejected(self, client, auth_headers) -> None:
+        create_resp = client.post(
+            "/sites", json={"name": "branch-2", "network_identity": "203.0.113.71"}, headers=auth_headers
+        )
+        site_id = create_resp.json()["id"]
+
+        resp = client.patch(f"/sites/{site_id}", json={"name": ""}, headers=auth_headers)
+
+        assert resp.status_code == 422
+
+    def test_rename_is_audited(self, client, auth_headers, db) -> None:
+        create_resp = client.post(
+            "/sites", json={"name": "branch-3", "network_identity": "203.0.113.72"}, headers=auth_headers
+        )
+        site_id = create_resp.json()["id"]
+
+        client.patch(f"/sites/{site_id}", json={"name": "Renamed"}, headers=auth_headers)
+
+        assert any(
+            e["action"] == "site.renamed" and e["target"] == site_id for e in db.audit_log
+        )
 
     def test_site_creation_and_deletion_are_audited(self, client, auth_headers, db) -> None:
         create_resp = client.post(

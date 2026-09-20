@@ -158,3 +158,74 @@ class TestUpdateUserStatus:
         )
 
         assert resp.status_code == 422
+
+
+class TestDeleteUser:
+    def test_a_user_with_no_history_is_deleted(self, client, db) -> None:
+        headers, _ = _login_as_admin(client, db)
+        invited = client.post(
+            "/users",
+            json={"email": "freshuser@example.com", "password": "changeme123"},
+            headers=headers,
+        ).json()
+
+        resp = client.delete(f"/users/{invited['id']}", headers=headers)
+
+        assert resp.status_code == 204
+        list_resp = client.get("/users", headers=headers)
+        assert invited["id"] not in [u["id"] for u in list_resp.json()]
+
+    def test_unknown_user_is_404(self, client, db) -> None:
+        headers, _ = _login_as_admin(client, db)
+
+        resp = client.delete("/users/does-not-exist", headers=headers)
+
+        assert resp.status_code == 404
+
+    def test_cannot_delete_your_own_account(self, client, db) -> None:
+        headers, user_id = _login_as_admin(client, db)
+
+        resp = client.delete(f"/users/{user_id}", headers=headers)
+
+        assert resp.status_code == 400
+
+    def test_a_user_with_audit_history_cannot_be_hard_deleted(self, client, db) -> None:
+        """Deleting an account that has itself acted as an audit-log actor would
+        require either cascading the deletion into audit_log_entry (destroying the
+        history FR-011 requires) or leaving a dangling reference — so it's rejected
+        with a clear 409 instead, pointing at disable as the alternative."""
+        headers, _ = _login_as_admin(client, db)
+        invited = client.post(
+            "/users",
+            json={"email": "activeadmin@example.com", "password": "changeme123", "role": "administrator"},
+            headers=headers,
+        ).json()
+        login_resp = client.post(
+            "/auth/login",
+            json={"email": "activeadmin@example.com", "password": "changeme123"},
+        )
+        target_headers = {"Authorization": f"Bearer {login_resp.json()['session_token']}"}
+        # Gives this user an audit_log_entry as actor, referencing them via FK.
+        client.post(
+            "/users",
+            json={"email": "invitedbytarget@example.com", "password": "changeme123"},
+            headers=target_headers,
+        )
+
+        resp = client.delete(f"/users/{invited['id']}", headers=headers)
+
+        assert resp.status_code == 409
+
+    def test_delete_writes_an_audit_log_entry(self, client, db) -> None:
+        headers, _ = _login_as_admin(client, db)
+        invited = client.post(
+            "/users",
+            json={"email": "todelete@example.com", "password": "changeme123"},
+            headers=headers,
+        ).json()
+
+        client.delete(f"/users/{invited['id']}", headers=headers)
+
+        assert any(
+            e["action"] == "user.deleted" and e["target"] == invited["id"] for e in db.audit_log
+        )

@@ -1,5 +1,5 @@
-"""GET/POST /users, PATCH /users/{id}/roles, PATCH /users/{id}/status — User Story 3,
-FR-008/FR-009. Every mutation writes an AuditLogEntry (FR-011)."""
+"""GET/POST /users, PATCH /users/{id}/roles, PATCH /users/{id}/status, DELETE /users/{id}
+— User Story 3, FR-008/FR-009. Every mutation writes an AuditLogEntry (FR-011)."""
 
 from __future__ import annotations
 
@@ -201,3 +201,35 @@ async def update_user_status(
             detail={"status": body.status},
         )
     return _to_user_response(row)
+
+
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(user_id: str, actor: AuthenticatedUser = Depends(require_user)) -> None:
+    """Permanently removes the user (sessions/API tokens/role assignments cascade via
+    their FKs). Unlike PATCH .../status, this cannot be undone — use disable for
+    ordinary access revocation.
+
+    A user who has ever performed an audited action, onboarded a site, or updated the
+    retention policy cannot be hard-deleted: those tables reference app_user without
+    ON DELETE CASCADE, by design, so deleting the account can never silently erase
+    audit history (FR-011). Disable such accounts instead."""
+    if user_id == actor.user_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "You cannot delete your own account")
+
+    pool = await db.get_pool()
+    async with pool.acquire() as conn:
+        try:
+            result = await conn.execute("DELETE FROM app_user WHERE id = $1", user_id)
+        except asyncpg.ForeignKeyViolationError as exc:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "This user has audit history, a site, or a retention policy change "
+                "attributed to them and cannot be permanently deleted — disable the "
+                "account instead to revoke access while preserving that history.",
+            ) from exc
+        if result == "DELETE 0":
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+
+        await write_audit_log(
+            conn, actor_user_id=actor.user_id, action="user.deleted", target=user_id
+        )

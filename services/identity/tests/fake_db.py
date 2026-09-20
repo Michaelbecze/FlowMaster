@@ -135,6 +135,14 @@ class FakeConnection:
         if q.startswith("SELECT id, name, network_identity, status, last_seen_at, created_at FROM site WHERE"):
             return None
 
+        if q.startswith("UPDATE site SET name"):
+            site_id, name = args
+            s = self.db.sites.get(site_id)
+            if not s:
+                return None
+            s["name"] = name
+            return dict(s)
+
         if q.startswith("INSERT INTO app_user"):
             org_id, email, password_hash = args
             for u in self.db.users.values():
@@ -249,6 +257,23 @@ class FakeConnection:
             self.db.sites.pop(args[0], None)
             self.db.assignments = [a for a in self.db.assignments if a.get("site_id") != args[0]]
             return "DELETE 1" if existed else "DELETE 0"
+
+        if q.startswith("DELETE FROM app_user WHERE id"):
+            user_id = args[0]
+            if user_id not in self.db.users:
+                return "DELETE 0"
+            referenced = (
+                any(s["created_by"] == user_id for s in self.db.sites.values())
+                or any(rp["updated_by"] == user_id for rp in self.db.retention_policies.values())
+                or any(e["actor_user_id"] == user_id for e in self.db.audit_log)
+            )
+            if referenced:
+                raise asyncpg.exceptions.ForeignKeyViolationError("update or delete violates foreign key constraint")
+            self.db.users.pop(user_id, None)
+            self.db.assignments = [a for a in self.db.assignments if a["user_id"] != user_id]
+            self.db.sessions = {k: v for k, v in self.db.sessions.items() if v["user_id"] != user_id}
+            self.db.api_tokens = {k: v for k, v in self.db.api_tokens.items() if v["user_id"] != user_id}
+            return "DELETE 1"
 
         if q.startswith("DELETE FROM user_role_assignment WHERE user_id"):
             before = len(self.db.assignments)

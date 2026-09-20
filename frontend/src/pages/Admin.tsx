@@ -42,6 +42,8 @@ function UsersSection() {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("viewer");
   const [error, setError] = useState<string | null>(null);
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editingRole, setEditingRole] = useState("viewer");
 
   async function refresh() {
     try {
@@ -77,6 +79,52 @@ function UsersSection() {
       method: "PATCH",
       body: JSON.stringify({ status: next }),
     });
+    await refresh();
+  }
+
+  async function onDelete(user: UserRow) {
+    if (!confirm(`Permanently delete ${user.email}? This cannot be undone.`)) return;
+    setError(null);
+    const res = await apiFetch(`/api/v1/identity/users/${user.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      if (res.status === 409) {
+        setError(
+          `${user.email} has audit history and can't be permanently deleted — disable the account instead.`,
+        );
+      } else if (res.status === 400) {
+        setError("You cannot delete your own account.");
+      } else {
+        setError(`Failed to delete ${user.email}.`);
+      }
+      return;
+    }
+    await refresh();
+  }
+
+  function onStartEditRole(user: UserRow) {
+    setError(null);
+    setEditingUserId(user.id);
+    // A user can hold several scoped role assignments, but invite only ever sets one
+    // org-wide role — editing mirrors that single-role model rather than exposing
+    // per-site scoping the rest of this UI doesn't have a way to set up either.
+    setEditingRole(user.roles[0]?.role ?? "viewer");
+  }
+
+  function onCancelEditRole() {
+    setEditingUserId(null);
+  }
+
+  async function onSaveRole(user: UserRow) {
+    setError(null);
+    const res = await apiFetch(`/api/v1/identity/users/${user.id}/roles`, {
+      method: "PATCH",
+      body: JSON.stringify({ roles: [{ role: editingRole, site_id: null }] }),
+    });
+    if (!res.ok) {
+      setError(`Failed to update ${user.email}'s role.`);
+      return;
+    }
+    setEditingUserId(null);
     await refresh();
   }
 
@@ -146,13 +194,41 @@ function UsersSection() {
               <tr key={u.id}>
                 <td>{u.email}</td>
                 <td>
-                  {u.roles.map((r) => `${r.role}${r.site_id ? ` (${r.site_id.slice(0, 8)})` : " (all sites)"}`).join(", ")}
+                  {editingUserId === u.id ? (
+                    <select
+                      aria-label={`Role for ${u.email}`}
+                      value={editingRole}
+                      onChange={(e) => setEditingRole(e.target.value)}
+                      style={{ padding: 4 }}
+                    >
+                      {ROLE_OPTIONS.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    u.roles.map((r) => `${r.role}${r.site_id ? ` (${r.site_id.slice(0, 8)})` : " (all sites)"}`).join(", ")
+                  )}
                 </td>
                 <td>{u.status}</td>
                 <td>
-                  <button onClick={() => onToggleStatus(u)}>
-                    {u.status === "active" ? "Disable" : "Enable"}
-                  </button>
+                  {editingUserId === u.id ? (
+                    <>
+                      <button onClick={() => onSaveRole(u)}>Save</button>{" "}
+                      <button onClick={onCancelEditRole}>Cancel</button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => onStartEditRole(u)}>Edit role</button>{" "}
+                      <button onClick={() => onToggleStatus(u)}>
+                        {u.status === "active" ? "Disable" : "Enable"}
+                      </button>{" "}
+                      <button onClick={() => onDelete(u)} style={{ color: "var(--status-critical)" }}>
+                        Delete
+                      </button>
+                    </>
+                  )}
                 </td>
               </tr>
             ))}
@@ -168,6 +244,8 @@ function SitesSection() {
   const [name, setName] = useState("");
   const [networkIdentity, setNetworkIdentity] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
 
   async function refresh() {
     try {
@@ -199,6 +277,30 @@ function SitesSection() {
 
   async function onDelete(siteId: string) {
     await apiFetch(`/api/v1/identity/sites/${siteId}`, { method: "DELETE" });
+    await refresh();
+  }
+
+  function onStartEditName(site: SiteRow) {
+    setError(null);
+    setEditingSiteId(site.id);
+    setEditingName(site.name);
+  }
+
+  function onCancelEditName() {
+    setEditingSiteId(null);
+  }
+
+  async function onSaveName(site: SiteRow) {
+    setError(null);
+    const res = await apiFetch(`/api/v1/identity/sites/${site.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: editingName }),
+    });
+    if (!res.ok) {
+      setError(res.status === 422 ? "Site name can't be empty." : `Failed to rename ${site.name}.`);
+      return;
+    }
+    setEditingSiteId(null);
     await refresh();
   }
 
@@ -255,11 +357,33 @@ function SitesSection() {
           <tbody>
             {sites.map((s) => (
               <tr key={s.id}>
-                <td>{s.name}</td>
+                <td>
+                  {editingSiteId === s.id ? (
+                    <input
+                      aria-label={`Name for ${s.network_identity}`}
+                      value={editingName}
+                      onChange={(e) => setEditingName(e.target.value)}
+                      style={{ padding: 4 }}
+                      autoFocus
+                    />
+                  ) : (
+                    s.name
+                  )}
+                </td>
                 <td>{s.network_identity}</td>
                 <td>{s.status}</td>
                 <td>
-                  <button onClick={() => onDelete(s.id)}>Remove</button>
+                  {editingSiteId === s.id ? (
+                    <>
+                      <button onClick={() => onSaveName(s)}>Save</button>{" "}
+                      <button onClick={onCancelEditName}>Cancel</button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => onStartEditName(s)}>Edit</button>{" "}
+                      <button onClick={() => onDelete(s.id)}>Remove</button>
+                    </>
+                  )}
                 </td>
               </tr>
             ))}
