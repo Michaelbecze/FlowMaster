@@ -54,7 +54,7 @@ export function Login() {
           </svg>
           FLOWMASTER
         </div>
-        <label htmlFor="email" style={{ display: "block", marginBottom: 6 }}>
+        <label htmlFor="email">
           Email
         </label>
         <input
@@ -63,9 +63,9 @@ export function Login() {
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          style={{ width: "100%", marginBottom: 12, padding: 8 }}
+          style={{ width: "100%", marginBottom: 12 }}
         />
-        <label htmlFor="password" style={{ display: "block", marginBottom: 6 }}>
+        <label htmlFor="password">
           Password
         </label>
         <input
@@ -74,7 +74,7 @@ export function Login() {
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          style={{ width: "100%", marginBottom: 16, padding: 8 }}
+          style={{ width: "100%", marginBottom: 16 }}
         />
         {error && (
           <p role="alert" style={{ color: "var(--status-critical)", marginBottom: 12 }}>

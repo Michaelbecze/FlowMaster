@@ -199,6 +199,19 @@ tbody tr:hover {
   background: rgba(0, 212, 255, 0.05);
 }
 
+/* Every label in the app names the control right after it. A label is inline by
+   default, so without this the text butts straight up against its input with no gap
+   — Login.tsx hand-rolled `display:block` inline to get around that, and every other
+   form (users, sites, retention, reports, alerts) was left crowded. Setting it once
+   here keeps them consistent instead of each form re-solving it. */
+label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 input,
 select {
   background: rgba(0, 0, 0, 0.25);
@@ -206,6 +219,7 @@ select {
   border-radius: 6px;
   color: var(--text-primary);
   font-family: inherit;
+  padding: 7px 9px;
 }
 
 input:focus-visible,

@@ -133,7 +133,7 @@ function UsersSection() {
       <div className="card-title">Users</div>
 
       <form onSubmit={onInvite} aria-label="Invite user" style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
           <div>
             <label htmlFor="invite-email">Email</label>
             <input
@@ -142,7 +142,6 @@ function UsersSection() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              style={{ padding: 6 }}
             />
           </div>
           <div>
@@ -154,12 +153,11 @@ function UsersSection() {
               minLength={8}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              style={{ padding: 6 }}
             />
           </div>
           <div>
             <label htmlFor="invite-role">Role</label>
-            <select id="invite-role" value={role} onChange={(e) => setRole(e.target.value)} style={{ padding: 6 }}>
+            <select id="invite-role" value={role} onChange={(e) => setRole(e.target.value)}>
               {ROLE_OPTIONS.map((r) => (
                 <option key={r} value={r}>
                   {r}
@@ -309,7 +307,7 @@ function SitesSection() {
       <div className="card-title">Sites</div>
 
       <form onSubmit={onOnboard} aria-label="Onboard site" style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
           <div>
             <label htmlFor="site-name">Name</label>
             <input
@@ -317,7 +315,6 @@ function SitesSection() {
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              style={{ padding: 6 }}
             />
           </div>
           <div>
@@ -327,7 +324,6 @@ function SitesSection() {
               required
               value={networkIdentity}
               onChange={(e) => setNetworkIdentity(e.target.value)}
-              style={{ padding: 6 }}
             />
           </div>
           <button type="submit">Onboard site</button>
@@ -480,7 +476,7 @@ function RetentionPolicySection() {
       {policy === null && !error ? (
         <p>Loading…</p>
       ) : policy ? (
-        <form onSubmit={onSave} aria-label="Retention policy" style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+        <form onSubmit={onSave} aria-label="Retention policy" style={{ display: "flex", gap: 14, alignItems: "flex-end" }}>
           <div>
             <label htmlFor="retention-days">Retention (days)</label>
             <input
@@ -490,7 +486,7 @@ function RetentionPolicySection() {
               required
               value={days}
               onChange={(e) => setDays(e.target.value)}
-              style={{ padding: 6, width: 100 }}
+              style={{ width: 100 }}
             />
           </div>
           <button type="submit">Save</button>

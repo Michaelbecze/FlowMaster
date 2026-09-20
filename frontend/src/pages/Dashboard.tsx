@@ -1,12 +1,20 @@
 import ReactECharts from "echarts-for-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FlowDrilldown } from "../components/FlowDrilldown";
 import { FlowMapSankey, FlowMapData } from "../components/FlowMapSankey";
 import { SiteSelector } from "../components/SiteSelector";
 import { TrafficBucket, TrafficChart } from "../components/TrafficChart";
 import { apiGetJson } from "../services/api";
 import { useRealtimeStats } from "../services/realtime";
-import { CHART_SERIES_COLORS, CHART_TEXT_SECONDARY } from "../styles/chartColors";
+import {
+  CHART_BASELINE,
+  CHART_GRIDLINE,
+  CHART_OTHER_COLOR,
+  CHART_SERIES_COLORS,
+  CHART_SURFACE,
+  CHART_TEXT_MUTED,
+  CHART_TEXT_SECONDARY,
+} from "../styles/chartColors";
 
 const RANGE_OPTIONS = ["1h", "3h", "6h", "12h", "24h"] as const;
 type Range = (typeof RANGE_OPTIONS)[number];
@@ -53,6 +61,45 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
+/** A part-to-whole ring only reads at a glance up to ~6 segments, and there are only
+ * 8 categorical hues — a real capture sees 14+ applications, which previously meant
+ * both a thicket of collided leader lines and hues recycling (HTTPS and RDP both
+ * cyan, IMAP and SMB both red) so the legend no longer identified anything. The tail
+ * folds into one neutral "Other" instead, merged with whatever the backend already
+ * classified as OTHER rather than sitting next to a second bucket of the same name. */
+const MAX_NAMED_SLICES = 6;
+/** Below this share a direct label is more collision than information; the legend
+ * and the hover tooltip carry those slices instead. */
+const MIN_LABELED_SHARE = 0.03;
+
+interface PieSlice {
+  name: string;
+  bytes: number;
+  folded: { application: string; bytes: number }[];
+}
+
+function toPieSlices(breakdown: { application: string; bytes: number }[]): PieSlice[] {
+  const isOther = (application: string) => application.toUpperCase() === "OTHER";
+  const named = breakdown
+    .filter((b) => !isOther(b.application) && b.bytes > 0)
+    .sort((a, b) => b.bytes - a.bytes);
+  const top = named.slice(0, MAX_NAMED_SLICES);
+  const tail = [
+    ...named.slice(MAX_NAMED_SLICES),
+    ...breakdown.filter((b) => isOther(b.application) && b.bytes > 0),
+  ].sort((a, b) => b.bytes - a.bytes);
+
+  const slices: PieSlice[] = top.map((b) => ({ name: b.application, bytes: b.bytes, folded: [] }));
+  if (tail.length > 0) {
+    slices.push({
+      name: "Other",
+      bytes: tail.reduce((sum, b) => sum + b.bytes, 0),
+      folded: tail,
+    });
+  }
+  return slices;
+}
+
 export function Dashboard() {
   const [sites, setSites] = useState<SiteStatusRow[]>([]);
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
@@ -65,16 +112,6 @@ export function Dashboard() {
 
   const [drilldownWindow, setDrilldownWindow] = useState<{ start: Date; end: Date } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const drilldownRef = useRef<HTMLDivElement>(null);
-
-  // FlowDrilldown renders at the bottom of a long page; without this, opening it
-  // from "View flows" or a chart click can land below the fold and look like the
-  // click did nothing.
-  useEffect(() => {
-    if (drilldownWindow) {
-      drilldownRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, [drilldownWindow]);
 
   const allSiteIds = useMemo(() => sites.map((s) => s.site_id), [sites]);
   // Selecting a site scopes every chart to it; "All sites" (null) keeps the
@@ -126,22 +163,59 @@ export function Dashboard() {
   const bucketSeconds = RANGE_TO_HOURS[range] <= FINE_BUCKET_RANGE_HOURS ? 60 : 3600;
 
   const protocolOption = useMemo(() => {
-    const breakdown = summary?.data.application_breakdown ?? [];
+    const slices = toPieSlices(summary?.data.application_breakdown ?? []);
+    const total = slices.reduce((sum, s) => sum + s.bytes, 0);
+    const foldedByName = new Map(slices.map((s) => [s.name, s.folded]));
+
     return {
-      tooltip: { trigger: "item", valueFormatter: (v: number) => formatBytes(v) },
-      legend: { show: true, bottom: 0, textStyle: { color: CHART_TEXT_SECONDARY } },
+      tooltip: {
+        trigger: "item",
+        // Folding the tail must not make it unreachable: hovering "Other" itemizes
+        // what went into it, so no application disappears from the dashboard.
+        formatter: (params: { name: string; value: number; percent: number }) => {
+          const folded = foldedByName.get(params.name) ?? [];
+          const head = `${params.name}<br/>${formatBytes(params.value)} (${params.percent}%)`;
+          if (folded.length === 0) return head;
+          const rows = folded
+            .map((b) => `${b.application} — ${formatBytes(b.bytes)}`)
+            .join("<br/>");
+          return `${head}<hr style="opacity:0.2;margin:4px 0"/>${rows}`;
+        },
+      },
+      legend: {
+        show: true,
+        bottom: 0,
+        itemWidth: 10,
+        itemHeight: 10,
+        textStyle: { color: CHART_TEXT_SECONDARY, fontSize: 11 },
+      },
       series: [
         {
           type: "pie",
-          radius: ["45%", "70%"],
+          radius: ["48%", "72%"],
+          // Raised off-center so the ring never reaches down into the legend band —
+          // a bottom-pointing leader line used to land on top of the legend chips.
+          center: ["50%", "44%"],
           avoidLabelOverlap: true,
-          label: { color: CHART_TEXT_SECONDARY, fontSize: 11 },
-          labelLine: { length: 12, length2: 10 },
-          data: breakdown.map((b, i) => ({
-            name: b.application,
-            value: b.bytes,
-            itemStyle: { color: CHART_SERIES_COLORS[i % CHART_SERIES_COLORS.length] },
-          })),
+          minAngle: 2,
+          // A 2px surface gap, not a stroke around each mark, so touching slivers
+          // still read as separate.
+          itemStyle: { borderColor: CHART_SURFACE, borderWidth: 2 },
+          labelLine: { length: 10, length2: 10 },
+          data: slices.map((s, i) => {
+            const labeled = total > 0 && s.bytes / total >= MIN_LABELED_SHARE;
+            return {
+              name: s.name,
+              value: s.bytes,
+              itemStyle: {
+                color: s.name === "Other" ? CHART_OTHER_COLOR : CHART_SERIES_COLORS[i],
+              },
+              // Selective direct labels: the slices big enough to name are named,
+              // the rest are identified by the legend and on hover.
+              label: { show: labeled, color: CHART_TEXT_SECONDARY, fontSize: 11 },
+              labelLine: { show: labeled },
+            };
+          }),
         },
       ],
     };
@@ -151,9 +225,22 @@ export function Dashboard() {
     const rows = topTalkers?.data ?? [];
     return {
       tooltip: { valueFormatter: (v: number) => formatBytes(v) },
-      grid: { left: 90, right: 20, top: 10, bottom: 20 },
-      xAxis: { type: "value", axisLabel: { formatter: (v: number) => formatBytes(v) } },
-      yAxis: { type: "category", data: rows.map((r) => r.src_addr).reverse() },
+      // right: the last x-axis tick is centered on the plot edge, so it needs room
+      // to overhang — at 20 it was being clipped mid-word ("762.9 MI").
+      grid: { left: 90, right: 48, top: 10, bottom: 24 },
+      xAxis: {
+        type: "value",
+        axisLabel: { formatter: (v: number) => formatBytes(v), color: CHART_TEXT_MUTED },
+        splitLine: { lineStyle: { color: CHART_GRIDLINE } },
+        axisLine: { lineStyle: { color: CHART_BASELINE } },
+      },
+      yAxis: {
+        type: "category",
+        data: rows.map((r) => r.src_addr).reverse(),
+        axisLabel: { color: CHART_TEXT_MUTED },
+        axisLine: { lineStyle: { color: CHART_BASELINE } },
+        axisTick: { show: false },
+      },
       series: [
         {
           type: "bar",
@@ -257,6 +344,7 @@ export function Dashboard() {
           <TrafficChart
             data={trafficOverTime.data}
             bucketSeconds={bucketSeconds}
+            selectedBucket={drilldownWindow?.start ?? null}
             onPointClick={(bucket) => {
               const start = new Date(bucket.bucket);
               setDrilldownWindow({ start, end: new Date(start.getTime() + bucketSeconds * 1000) });
@@ -264,6 +352,16 @@ export function Dashboard() {
           />
         ) : (
           <p>Loading…</p>
+        )}
+        {/* Expands in place under the chart that opened it — clicking a point used to
+            jump to the foot of the page, away from the point you clicked. */}
+        {drilldownWindow && (
+          <FlowDrilldown
+            start={drilldownWindow.start}
+            end={drilldownWindow.end}
+            siteId={selectedSiteId}
+            onClose={() => setDrilldownWindow(null)}
+          />
         )}
       </div>
 
@@ -280,7 +378,7 @@ export function Dashboard() {
           {summary?.empty ? (
             <div className="empty-state">No traffic in this window.</div>
           ) : (
-            <ReactECharts option={protocolOption} style={{ height: 380 }} />
+            <ReactECharts option={protocolOption} style={{ height: 330 }} />
           )}
         </div>
         <div className="card">
@@ -288,7 +386,7 @@ export function Dashboard() {
           {topTalkers?.empty ? (
             <div className="empty-state">No traffic in this window.</div>
           ) : (
-            <ReactECharts option={talkersOption} style={{ height: 260 }} />
+            <ReactECharts option={talkersOption} style={{ height: 330 }} />
           )}
         </div>
       </div>
@@ -303,17 +401,6 @@ export function Dashboard() {
           <p>Loading…</p>
         )}
       </div>
-
-      {drilldownWindow && (
-        <div ref={drilldownRef}>
-          <FlowDrilldown
-            start={drilldownWindow.start}
-            end={drilldownWindow.end}
-            siteId={selectedSiteId}
-            onClose={() => setDrilldownWindow(null)}
-          />
-        </div>
-      )}
     </div>
   );
 }

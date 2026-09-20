@@ -121,7 +121,7 @@ export function Reports() {
               value={start}
               onChange={(e) => setStart(e.target.value)}
               required
-              style={{ width: "100%", padding: 6 }}
+              style={{ width: "100%" }}
             />
           </div>
           <div>
@@ -132,7 +132,7 @@ export function Reports() {
               value={end}
               onChange={(e) => setEnd(e.target.value)}
               required
-              style={{ width: "100%", padding: 6 }}
+              style={{ width: "100%" }}
             />
           </div>
           <div>
@@ -142,7 +142,7 @@ export function Reports() {
               value={siteId}
               onChange={(e) => setSiteId(e.target.value)}
               placeholder="all sites"
-              style={{ width: "100%", padding: 6 }}
+              style={{ width: "100%" }}
             />
           </div>
           <div>
@@ -153,7 +153,7 @@ export function Reports() {
               value={protocol}
               onChange={(e) => setProtocol(e.target.value)}
               placeholder="any"
-              style={{ width: "100%", padding: 6 }}
+              style={{ width: "100%" }}
             />
           </div>
           <div>
@@ -163,7 +163,7 @@ export function Reports() {
               value={application}
               onChange={(e) => setApplication(e.target.value)}
               placeholder="any"
-              style={{ width: "100%", padding: 6 }}
+              style={{ width: "100%" }}
             />
           </div>
           <div>
@@ -173,7 +173,7 @@ export function Reports() {
               value={host}
               onChange={(e) => setHost(e.target.value)}
               placeholder="any"
-              style={{ width: "100%", padding: 6 }}
+              style={{ width: "100%" }}
             />
           </div>
         </div>

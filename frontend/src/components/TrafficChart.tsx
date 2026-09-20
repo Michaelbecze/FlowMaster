@@ -1,6 +1,12 @@
 import ReactECharts from "echarts-for-react";
 import { useMemo } from "react";
-import { CHART_SERIES_COLORS } from "../styles/chartColors";
+import {
+  CHART_BASELINE,
+  CHART_GRIDLINE,
+  CHART_SERIES_COLORS,
+  CHART_SURFACE,
+  CHART_TEXT_MUTED,
+} from "../styles/chartColors";
 
 export interface TrafficBucket {
   bucket: string;
@@ -20,12 +26,20 @@ function formatBytes(bytes: number): string {
 export function TrafficChart({
   data,
   bucketSeconds,
+  selectedBucket,
   onPointClick,
 }: {
   data: TrafficBucket[];
   bucketSeconds: number;
+  /** Start of the bucket whose flow list is currently open, if any. */
+  selectedBucket?: Date | null;
   onPointClick: (bucket: TrafficBucket) => void;
 }) {
+  // Compared as parsed instants, not as strings: the drill-down window is built by
+  // round-tripping the bucket through a Date, which need not re-serialize to the
+  // byte-identical string the API sent (offset spelling, millisecond precision), and
+  // a string compare would just silently never match.
+  const selectedAt = selectedBucket ? selectedBucket.getTime() : null;
   const option = useMemo(
     () => ({
       tooltip: { trigger: "axis", valueFormatter: (v: number) => formatBytes(v) },
@@ -36,13 +50,36 @@ export function TrafficChart({
         axisLabel: {
           formatter: (value: string) =>
             new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          color: CHART_TEXT_MUTED,
         },
+        axisLine: { lineStyle: { color: CHART_BASELINE } },
+        axisTick: { show: false },
       },
-      yAxis: { type: "value", axisLabel: { formatter: (v: number) => formatBytes(v) } },
+      yAxis: {
+        type: "value",
+        axisLabel: { formatter: (v: number) => formatBytes(v), color: CHART_TEXT_MUTED },
+        splitLine: { lineStyle: { color: CHART_GRIDLINE } },
+        axisLine: { lineStyle: { color: CHART_BASELINE } },
+      },
       series: [
         {
           type: "line",
-          data: data.map((d) => d.total_bytes),
+          // The open bucket is marked on the chart itself, so it stays obvious which
+          // point the flow list below belongs to — and which one is still open after
+          // the 15s refresh repaints the series.
+          data: data.map((d) => ({
+            value: d.total_bytes,
+            ...(selectedAt !== null && new Date(d.bucket).getTime() === selectedAt
+              ? {
+                  symbolSize: 13,
+                  itemStyle: {
+                    color: CHART_SERIES_COLORS[0],
+                    borderColor: CHART_SURFACE,
+                    borderWidth: 2,
+                  },
+                }
+              : {}),
+          })),
           smooth: true,
           symbolSize: 7,
           lineStyle: { color: CHART_SERIES_COLORS[0], width: 2 },
@@ -51,7 +88,7 @@ export function TrafficChart({
         },
       ],
     }),
-    [data],
+    [data, selectedAt],
   );
 
   function onChartClick(params: { dataIndex: number }) {

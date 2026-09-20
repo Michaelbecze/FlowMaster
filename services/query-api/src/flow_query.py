@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from . import clickhouse, retention_client
+from .isotime import to_utc_iso
 
 PAGE_SIZE = 100
 
@@ -95,7 +96,19 @@ async def query_flows(
 
     client = await clickhouse.get_client()
     rows = await client.query(query, parameters=params)
-    return [dict(zip(_COLUMNS, row, strict=True)) for row in rows.result_rows]
+    return [_serialize(dict(zip(_COLUMNS, row, strict=True))) for row in rows.result_rows]
+
+
+def _serialize(row: dict) -> dict:
+    """Normalize the one datetime column to an explicit UTC instant, for every caller
+    of this query at once: the drill-down table, a saved report's preview, and the CSV
+    export (whose default rendering of a naive datetime — "2026-09-20 14:30:00" — was
+    likewise missing the offset, so an exported row could not be tied back to a
+    wall-clock time without knowing the server's zone)."""
+    timestamp = row.get("timestamp")
+    if isinstance(timestamp, datetime):
+        row["timestamp"] = to_utc_iso(timestamp)
+    return row
 
 
 async def is_outside_retention(flt: FlowFilter) -> bool:

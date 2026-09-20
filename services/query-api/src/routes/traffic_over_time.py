@@ -15,6 +15,7 @@ from shared.api.envelope import EmptyReason, Envelope
 from shared.authz import Principal, require_site_scope
 
 from .. import clickhouse
+from ..isotime import to_utc_iso
 from .summary import _parse_range
 
 router = APIRouter(tags=["query"])
@@ -47,7 +48,9 @@ async def get_traffic_over_time(
         parameters={"site_ids": site_ids, "hours": hours, "bucket_seconds": bucket_seconds},
     )
     data = [
-        {"bucket": r[0].isoformat(), "total_bytes": r[1], "total_packets": r[2]}
+        # to_utc_iso, not a bare .isoformat(): the chart parses this back into the
+        # drill-down window, and an offset-less string is read as local time there.
+        {"bucket": to_utc_iso(r[0]), "total_bytes": r[1], "total_packets": r[2]}
         for r in rows.result_rows
     ]
 

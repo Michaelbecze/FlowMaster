@@ -59,14 +59,13 @@ function RuleForm({ onCreated }: { onCreated: () => void }) {
 
   return (
     <form onSubmit={onSubmit} aria-label="Define alert rule" style={{ marginBottom: 16 }}>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div>
           <label htmlFor="rule-site">Site ID (blank = all your sites)</label>
           <input
             id="rule-site"
             value={siteId}
             onChange={(e) => setSiteId(e.target.value)}
-            style={{ padding: 6 }}
           />
         </div>
         <div>
@@ -78,7 +77,6 @@ function RuleForm({ onCreated }: { onCreated: () => void }) {
             required
             value={threshold}
             onChange={(e) => setThreshold(e.target.value)}
-            style={{ padding: 6 }}
           />
         </div>
         <div>
@@ -90,7 +88,7 @@ function RuleForm({ onCreated }: { onCreated: () => void }) {
             required
             value={windowSeconds}
             onChange={(e) => setWindowSeconds(e.target.value)}
-            style={{ padding: 6, width: 100 }}
+            style={{ width: 100 }}
           />
         </div>
         <button type="submit">Create rule</button>

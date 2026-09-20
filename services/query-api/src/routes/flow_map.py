@@ -39,23 +39,26 @@ async def get_flow_map(
         parameters={"site_ids": site_ids, "hours": hours, "limit": limit},
     )
 
-    # ECharts' sankey series requires a DAG and throws on any cycle; real traffic
-    # commonly has both A->B and B->A (e.g. a client/server conversation recorded as
-    # two directions), which is a 2-node cycle. Collapsing each unordered pair into
-    # one link (summing both directions) removes that case by construction. Longer
-    # cycles (A->B->C->A) are not handled — accepted as a rare edge case, not worth
-    # a general cycle-detection pass for a top-N visualization.
-    pair_totals: dict[tuple[str, str], int] = {}
-    for src_addr, dst_addr, total_bytes in rows.result_rows:
-        key = tuple(sorted((src_addr, dst_addr)))
-        pair_totals[key] = pair_totals.get(key, 0) + total_bytes
-
+    # Directions are reported as measured — each row is one src -> dst pair, already
+    # ordered by volume.
+    #
+    # This used to collapse every unordered pair into a single link, summing both
+    # directions, because ECharts' sankey throws on a cycle and a client/server
+    # conversation recorded as both A->B and B->A is a 2-node cycle. That workaround
+    # cost more than it bought: it summed opposing directions into one number, and
+    # keying on `sorted((src, dst))` meant the surviving link pointed whichever way
+    # sorted first — so a link could be drawn backwards relative to the traffic it
+    # described. It also only ever covered 2-node cycles; A->B->C->A still threw.
+    #
+    # The chart now renders as a strict two-column source -> destination diagram
+    # (FlowMapSankey.tsx gives an address distinct identities per side), so no cycle
+    # of any length is representable and none of that is needed.
     node_names: dict[str, None] = {}
     links = []
-    for (addr_a, addr_b), total_bytes in sorted(pair_totals.items(), key=lambda kv: -kv[1]):
-        node_names.setdefault(addr_a, None)
-        node_names.setdefault(addr_b, None)
-        links.append({"source": addr_a, "target": addr_b, "value": total_bytes})
+    for src_addr, dst_addr, total_bytes in rows.result_rows:
+        node_names.setdefault(src_addr, None)
+        node_names.setdefault(dst_addr, None)
+        links.append({"source": src_addr, "target": dst_addr, "value": total_bytes})
 
     data = {"nodes": [{"name": n} for n in node_names], "links": links}
     empty = len(links) == 0
