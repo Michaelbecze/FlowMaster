@@ -1,0 +1,11 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["services/*/src", "gateway/src", "packages/shared/src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "ASYNC"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]

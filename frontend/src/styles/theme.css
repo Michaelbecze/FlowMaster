@@ -1,0 +1,380 @@
+/* Design tokens — carried over from the original single-process dashboard's palette
+   (dark, glowing, high-saturation NOC aesthetic) rather than the neutral enterprise
+   default, per explicit design direction. Swap values here only; the app references
+   roles, not raw hex, everywhere below. */
+:root {
+  color-scheme: dark;
+  --surface-1: rgba(8, 18, 44, 0.85);
+  --page-plane: #060d1f;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --gridline: rgba(255, 255, 255, 0.06);
+  --baseline: rgba(255, 255, 255, 0.12);
+  --border: rgba(0, 212, 255, 0.18);
+  --border-strong: rgba(0, 212, 255, 0.4);
+  --glow: 0 0 20px rgba(0, 212, 255, 0.15);
+
+  --cyan: #00d4ff;
+  --purple: #8b5cf6;
+  --green: #10b981;
+  --orange: #f59e0b;
+  --pink: #ec4899;
+  --red: #ef4444;
+  --blue: #3b82f6;
+  --yellow: #eab308;
+
+  --series-1: var(--cyan);
+  --series-2: var(--purple);
+  --series-3: var(--green);
+  --series-4: var(--orange);
+  --series-5: var(--pink);
+  --series-6: var(--red);
+  --series-7: var(--blue);
+  --series-8: var(--yellow);
+
+  --status-good: var(--green);
+  --status-warning: var(--orange);
+  --status-serious: var(--pink);
+  --status-critical: var(--red);
+
+  --font-sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--page-plane);
+  background-image:
+    radial-gradient(ellipse at 20% 10%, rgba(0, 212, 255, 0.05) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(139, 92, 246, 0.05) 0%, transparent 50%);
+  background-attachment: fixed;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  min-height: 100vh;
+}
+
+a {
+  color: var(--cyan);
+}
+
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.app-nav {
+  width: 220px;
+  flex-shrink: 0;
+  background: rgba(6, 13, 31, 0.9);
+  border-right: 1px solid var(--border);
+  padding: 20px 12px;
+  backdrop-filter: blur(16px);
+}
+
+.app-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--cyan);
+  text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+  padding: 8px 12px 22px;
+}
+
+.app-nav a {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-weight: 600;
+  margin-bottom: 4px;
+  border: 1px solid transparent;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.app-nav a:hover {
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+.app-nav a[aria-current="page"] {
+  background: rgba(0, 212, 255, 0.12);
+  border-color: var(--border-strong);
+  color: var(--cyan);
+}
+
+.app-nav a:focus-visible,
+button:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+
+.app-main {
+  flex: 1;
+  padding: 24px 28px;
+  max-width: 1600px;
+}
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 20px;
+  box-shadow: var(--glow);
+  backdrop-filter: blur(8px);
+}
+
+.card-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0 0 14px;
+}
+
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 140px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* Visually hidden but present for screen readers (FR-016). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--gridline);
+}
+
+th {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  position: sticky;
+  top: 0;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+tbody tr {
+  transition: background 0.15s;
+}
+
+tbody tr:hover {
+  background: rgba(0, 212, 255, 0.05);
+}
+
+/* Every label in the app names the control right after it. A label is inline by
+   default, so without this the text butts straight up against its input with no gap
+   — Login.tsx hand-rolled `display:block` inline to get around that, and every other
+   form (users, sites, retention, reports, alerts) was left crowded. Setting it once
+   here keeps them consistent instead of each form re-solving it. */
+label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+input,
+select {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-family: inherit;
+  padding: 7px 9px;
+}
+
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 1px;
+  border-color: var(--border-strong);
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(0, 212, 255, 0.1);
+  color: var(--text-primary);
+  padding: 8px 14px;
+  font-weight: 600;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+button:hover {
+  border-color: var(--border-strong);
+  background: rgba(0, 212, 255, 0.18);
+}
+
+/* ── Stat tiles: colored top border + glowing value, matching the original
+   dashboard's stat-card treatment ───────────────────────────────────────── */
+.stat-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+}
+
+.stat-card.cyan::before {
+  background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+}
+.stat-card.purple::before {
+  background: linear-gradient(90deg, transparent, var(--purple), transparent);
+}
+.stat-card.green::before {
+  background: linear-gradient(90deg, transparent, var(--green), transparent);
+}
+.stat-card.orange::before {
+  background: linear-gradient(90deg, transparent, var(--orange), transparent);
+}
+
+.stat-value {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.stat-value.cyan {
+  color: var(--cyan);
+  text-shadow: 0 0 20px rgba(0, 212, 255, 0.4);
+}
+.stat-value.purple {
+  color: var(--purple);
+  text-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+}
+.stat-value.green {
+  color: var(--green);
+  text-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+}
+.stat-value.orange {
+  color: var(--orange);
+  text-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+}
+
+/* ── Live badge / pulse indicator ────────────────────────────────────────── */
+.live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 12px;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  border-radius: 20px;
+  background: rgba(16, 185, 129, 0.08);
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.live-badge.reconnecting {
+  border-color: rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--orange);
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 6px currentColor;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.8);
+  }
+}
+
+/* ── Pill buttons (time range, site selector) ────────────────────────────── */
+.pill-btn {
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.pill-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  background: transparent;
+}
+
+.pill-btn[aria-selected="true"] {
+  border-color: var(--cyan);
+  background: rgba(0, 212, 255, 0.12);
+  color: var(--cyan);
+}
+
+/* ── Scrollbar ────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 212, 255, 0.2);
+  border-radius: 3px;
+}

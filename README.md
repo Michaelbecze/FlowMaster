@@ -1,132 +1,150 @@
 # FlowMaster
 
-A lightweight NetFlow v5 collector and real-time analytics dashboard for home and small-office networks. Receives flows from Cisco IOS switches and pfSense, stores them in SQLite, and serves a live browser-based dashboard with interactive charts.
+An enterprise-oriented NetFlow v5 collection and analytics platform: a set of
+independently deployable services communicating over an event stream and REST APIs,
+backed by storage engines chosen per access pattern, fronted by a componentized React
+dashboard. This is a from-scratch evolution of an earlier single-process/SQLite
+prototype (see `git log`) into the microservices architecture described in
+[`specs/001-enterprise-netflow-platform/`](specs/001-enterprise-netflow-platform)
+(spec, plan, contracts, data model).
 
-![Dashboard](https://img.shields.io/badge/dashboard-browser--based-00d4ff?style=flat-square)
+![Dashboard](https://img.shields.io/badge/dashboard-React%20%2B%20ECharts-00d4ff?style=flat-square)
 ![NetFlow](https://img.shields.io/badge/NetFlow-v5-8b5cf6?style=flat-square)
-![Python](https://img.shields.io/badge/python-3.10%2B-10b981?style=flat-square)
+![Python](https://img.shields.io/badge/python-3.11%2B-10b981?style=flat-square)
 
 ---
 
-## Features
+## Architecture
 
-- **NetFlow v5 collector** — asyncio UDP listener on port 2055
-- **Real-time dashboard** — WebSocket-pushed stat updates every 5 seconds, full chart refresh every 15 seconds
-- **Traffic Volume** — clickable time-series chart; click any point to drill down into the individual flows for that window
-- **Protocol Distribution** — doughnut chart breaking down traffic by IP protocol (TCP, UDP, ICMP, etc.)
-- **Application Detection** — doughnut chart mapping well-known ports to application names (HTTP, HTTPS, DNS, SSH, RDP, and more)
-- **Top Talkers** — horizontal bar chart of the highest-bandwidth source IPs
-- **Flow Map** — D3 Sankey diagram showing the top source → destination traffic paths
-- **Global time range selector** — switch between 1H, 3H, 6H, 12H, and 24H views; all charts update instantly
-- **24-hour retention** — flows older than 24 hours are automatically purged
+| Service | Role | Port |
+|---|---|---|
+| `gateway` | Single public entry point — auth, rate limiting, routes to the services below (frontend and API clients never call a backend service directly) | 8080 |
+| `identity` | Users, roles, sites/exporters, auth (sessions + API tokens), audit log — PostgreSQL | 8001 |
+| `ingestion` | NetFlow v5 UDP listener; parses + validates packets; publishes to the event stream | 8002 (HTTP), 2055/udp (NetFlow) |
+| `flow-writer` | Consumes the event stream; batches flow records into ClickHouse; runs retention purge | 8003 |
+| `realtime` | Consumes the event stream; maintains rolling aggregates in Redis; pushes updates over WebSocket | 8004 |
+| `query-api` | REST API for dashboard summaries, drill-down, historical queries, report export | 8005 |
+| `alerting` | Alert rule evaluation against the event stream; notification delivery + de-dup | 8006 |
+| `frontend` | React + TypeScript + Vite SPA (charts via ECharts) | 5173 |
+
+Backing stores: **PostgreSQL** (relational metadata), **ClickHouse** (flow records,
+time-window aggregation), **Redis** (real-time state, WebSocket fan-out, rate limits),
+and a Kafka-API-compatible broker (**Redpanda**, dev topology) decoupling ingestion from
+its consumers.
+
+Full rationale for each choice is in
+[`specs/001-enterprise-netflow-platform/research.md`](specs/001-enterprise-netflow-platform/research.md);
+per-service contracts are in
+[`specs/001-enterprise-netflow-platform/contracts/`](specs/001-enterprise-netflow-platform/contracts).
 
 ---
 
 ## Requirements
 
-- Python 3.10+
-- pip
+- Docker + Docker Compose (runs the entire stack — Postgres, ClickHouse, Redis, the
+  broker, all six services, the Gateway, and the frontend dev server)
+- `psql` (or another Postgres client) to apply Identity's SQL migrations — there is no
+  automated migration runner yet, so this is a manual one-time step (see below)
 
-```
-fastapi
-uvicorn[standard]
-aiosqlite
-```
+Running a single service outside Docker additionally needs Python 3.11+ (each service
+has its own `pyproject.toml`) or Node.js 20+ for the frontend.
 
 ---
 
-## Installation
+## Running it
 
 ```bash
 git clone https://github.com/Michaelbecze/FlowMaster.git
 cd FlowMaster
-pip install -r requirements.txt
+docker compose -f infra/docker-compose.yml up -d
 ```
 
----
-
-## Running
+Apply the Identity service's database schema (one-time, or after pulling new
+migrations — each file is idempotent-safe to re-run):
 
 ```bash
-python main.py
+for f in services/identity/migrations/*.sql; do
+  docker compose -f infra/docker-compose.yml exec -T postgres \
+    psql -U flowmaster -d flowmaster -f - < "$f"
+done
 ```
 
-Then open **http://\<server-ip\>:8080** in your browser.
+Then open **http://localhost:5173** in your browser.
 
-By default the app listens on:
-| Service | Protocol | Port |
-|---|---|---|
-| Web dashboard | TCP | 8080 |
-| NetFlow collector | UDP | 2055 |
+### Default login
 
-Both hosts and ports can be changed in `config.py`.
+The last migration (`0009_seed_default_admin.sql`) seeds one administrator account so
+there's a way to log in on a fresh database — every user-management endpoint requires an
+existing admin caller, and there is no public signup (FR-020: platform-managed
+credentials only).
+
+| Email | Password |
+|---|---|
+| `admin@flowmaster.test` | `changeme` |
+
+**Change this password (or create a new admin and disable this one) before using
+FlowMaster outside your own machine.** There is currently no self-service "change my
+password" flow in the UI — do it via the Identity API (`PATCH /users/{id}` /
+re-seed with a different hash) or directly against the `app_user` table.
 
 ---
 
-## Project Structure
+## Project structure
 
 ```
 FlowMaster/
-├── main.py                  # Entry point — starts collector + web server
-├── config.py                # Ports, paths, retention settings
-├── requirements.txt
-├── collector/
-│   ├── netflow_v5.py        # NetFlow v5 binary packet parser
-│   └── listener.py          # asyncio UDP server
-├── storage/
-│   └── database.py          # aiosqlite / SQLite storage & queries
-├── api/
-│   └── routes.py            # FastAPI REST endpoints + WebSocket
-└── frontend/
-    └── index.html           # Single-file dashboard (Chart.js + D3 Sankey)
+├── gateway/                 # API gateway — single public entry point
+├── services/
+│   ├── identity/             # Users, roles, sites, auth, audit log (PostgreSQL)
+│   ├── ingestion/            # NetFlow v5 UDP listener → event stream
+│   ├── flow-writer/          # Event stream → ClickHouse; retention purge
+│   ├── realtime/              # Event stream → Redis aggregates → WebSocket
+│   ├── query-api/             # Historical queries, reports, export
+│   └── alerting/               # Alert rule evaluation + notification delivery
+├── packages/shared/          # Shared Python library used by every service
+├── frontend/                 # React + TypeScript + Vite dashboard
+│   └── src/
+│       ├── pages/            # Dashboard, Reports, Admin, Alerts, Login
+│       └── components/       # Charts, layout, auth guard, etc.
+├── infra/
+│   ├── docker-compose.yml    # Full local stack
+│   └── kafka-topics-init.sh
+└── specs/001-enterprise-netflow-platform/   # Spec, plan, contracts, data model, tasks
 ```
 
----
-
-## Configuration
-
-Edit `config.py` to change defaults:
-
-```python
-NETFLOW_HOST = "0.0.0.0"     # interface to listen on
-NETFLOW_PORT = 2055           # UDP port for NetFlow
-WEB_HOST     = "0.0.0.0"     # interface for the web server
-WEB_PORT     = 8080           # TCP port for the dashboard
-DATABASE_PATH = "flowmaster.db"
-FLOW_RETENTION_HOURS = 24
-```
+Each service directory has its own `src/` and `tests/`.
 
 ---
 
-## Application Detection
+## Testing
 
-FlowMaster maps well-known destination/source ports to application names:
-
-| Port(s) | Application |
-|---|---|
-| 80, 8080, 8000 | HTTP |
-| 443, 8443 | HTTPS |
-| 53 | DNS |
-| 22 | SSH |
-| 25, 587, 465 | SMTP |
-| 143, 993 | IMAP |
-| 3389 | RDP |
-| 1194 | OpenVPN |
-| 51820 | WireGuard |
-| 137–139, 445 | SMB |
-| *(others)* | Other |
-
-The full mapping is in `storage/database.py` (`get_applications`) and is easy to extend.
-
----
-
-## Testing without a real NetFlow source
-
-A test script is included that sends a synthetic 3-flow NetFlow v5 packet to localhost:
+Backend (per service, from that service's directory):
 
 ```bash
-python test_flow.py
+pytest
 ```
+
+Integration tests that exercise the full running stack are skipped automatically if
+`infra/docker-compose.yml` isn't up (they probe `GATEWAY_URL`, default
+`http://localhost:8080`).
+
+Frontend:
+
+```bash
+cd frontend
+npm run build   # tsc -b && vite build
+npx vitest run
+```
+
+---
+
+## Testing ingestion without a real NetFlow source
+
+Send synthetic NetFlow v5 packets directly to the Ingestion service's UDP port
+(`2055` by default) once a site has been onboarded via the Identity API or the Admin
+page — see
+[`specs/001-enterprise-netflow-platform/quickstart.md`](specs/001-enterprise-netflow-platform/quickstart.md)
+Scenario 1 for the full walkthrough.
 
 ---
 
