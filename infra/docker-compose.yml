@@ -212,6 +212,14 @@ services:
       # this container — must be the container-network address, not the host's.
       VITE_GATEWAY_URL: http://gateway:8080
     ports: ["5173:5173"]
+    volumes:
+      # Dockerfile's COPY . . only takes effect at build time — without a bind mount,
+      # the dev-mode Vite server (see Dockerfile's comment) serves a frozen snapshot
+      # and every source edit needs a full image rebuild to show up. The anonymous
+      # volume on node_modules keeps the container's own (correct-platform) install
+      # from being shadowed by the host's.
+      - ../frontend:/app
+      - /app/node_modules
     depends_on:
       - gateway
 
